@@ -1,0 +1,122 @@
+﻿# ============================================================
+# CryptoViT - Base Configuration
+# All values can be overridden by experiment-specific configs
+# or via CLI: python script.py key=value
+# ============================================================
+
+project:
+  name: CryptoViT
+  version: "0.1.0"
+  description: "Chaos-Assisted Vision Transformer for Privacy-Preserving Classification"
+  seed: 42
+
+# ----------------------------------------------------------
+# Paths
+# ----------------------------------------------------------
+paths:
+  data_dir: data
+  raw_dir: data/raw
+  processed_dir: data/processed
+  encrypted_dir: data/encrypted
+  experiments_dir: experiments
+  checkpoints_dir: experiments/checkpoints
+  logs_dir: experiments/logs
+  results_dir: experiments/results
+
+# ----------------------------------------------------------
+# Dataset
+# ----------------------------------------------------------
+dataset:
+  name: cifar10
+  image_size: 224
+  num_classes: 10
+  train_split: 0.9
+  num_workers: 4
+  pin_memory: true
+
+  augmentation:
+    random_crop: true
+    crop_padding: 4
+    random_horizontal_flip: true
+    color_jitter: false
+    color_jitter_strength: 0.4
+    random_erasing: false
+    normalize: true
+    mean: [0.4914, 0.4822, 0.4465]
+    std:  [0.2023, 0.1994, 0.2010]
+
+# ----------------------------------------------------------
+# Model
+# ----------------------------------------------------------
+model:
+  name: vit_small
+  image_size: 224
+  patch_size: 16
+  in_channels: 3
+  embed_dim: 192
+  depth: 6
+  num_heads: 3
+  mlp_ratio: 4.0
+  dropout: 0.1
+  attn_dropout: 0.0
+  drop_path_rate: 0.1
+  num_classes: 10
+  use_cls_token: true
+  pool: cls
+
+# ----------------------------------------------------------
+# Encryption (Phase 3+ placeholder)
+# ----------------------------------------------------------
+encryption:
+  enabled: false
+  system: hyperchaotic_4d
+  transient_steps: 1000
+  use_pixel_permutation: true
+  use_patch_permutation: true
+  use_diffusion: true
+  use_dna: true
+
+# ----------------------------------------------------------
+# Training
+# ----------------------------------------------------------
+training:
+  epochs: 100
+  batch_size: 128
+  accumulation_steps: 1
+  mixed_precision: true
+  optimizer: adamw
+  learning_rate: 3.0e-4
+  weight_decay: 0.05
+  betas: [0.9, 0.999]
+  scheduler: cosine
+  warmup_epochs: 5
+  min_lr: 1.0e-6
+  label_smoothing: 0.1
+  clip_grad_norm: 1.0
+  save_every_n_epochs: 10
+  keep_best_k: 3
+  early_stopping_patience: 20
+
+# ----------------------------------------------------------
+# Evaluation
+# ----------------------------------------------------------
+evaluation:
+  metrics: [accuracy, precision, recall, f1, confusion_matrix]
+  batch_size: 256
+
+# ----------------------------------------------------------
+# Logging / Experiment Tracking
+# ----------------------------------------------------------
+logging:
+  level: INFO
+  use_tensorboard: false
+  use_mlflow: false
+  mlflow_uri: "mlruns"
+  log_every_n_steps: 50
+
+# ----------------------------------------------------------
+# Hardware
+# ----------------------------------------------------------
+hardware:
+  device: auto
+  num_gpus: 1

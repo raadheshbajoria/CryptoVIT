@@ -1,0 +1,17 @@
+﻿# configs/experiment_phase1.yaml
+# Phase 1 experiment: dataset loading and preprocessing sanity check
+
+project:
+  seed: 42
+
+dataset:
+  name: cifar10
+  image_size: 224
+  num_classes: 10
+
+training:
+  epochs: 1
+  batch_size: 64
+
+logging:
+  level: DEBUG

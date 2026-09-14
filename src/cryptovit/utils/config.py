@@ -1,0 +1,126 @@
+"""
+cryptovit/utils/config.py
+=========================
+Configuration management for CryptoViT.
+
+Uses OmegaConf to load YAML files and merge them hierarchically:
+  base.yaml  <-  dataset-override.yaml  <-  experiment.yaml  <-  CLI dot-notation overrides
+
+Provides a single ``load_config`` entry point and a ``get_device`` helper.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
+from typing import List, Optional, Union
+
+from omegaconf import DictConfig, OmegaConf
+
+logger = logging.getLogger(__name__)
+
+# Project root is three levels up from this file:
+# src/cryptovit/utils/config.py  -> src/cryptovit/utils -> src/cryptovit -> src -> project_root
+_THIS_FILE = Path(__file__).resolve()
+PROJECT_ROOT = _THIS_FILE.parents[3]
+CONFIGS_DIR = PROJECT_ROOT / "configs"
+
+
+def load_config(
+    base: str = "base.yaml",
+    overrides: Optional[List[str]] = None,
+    extra_files: Optional[List[Union[str, Path]]] = None,
+) -> DictConfig:
+    """Load and merge CryptoViT configuration.
+
+    Parameters
+    ----------
+    base:
+        Filename of the base YAML inside ``configs/``.
+    overrides:
+        Optional list of dot-notation overrides, e.g.
+        ``["dataset.name=cifar100", "training.batch_size=64"]``.
+    extra_files:
+        Additional YAML files to merge on top of *base* (in order).
+        Paths may be absolute or relative to ``configs/``.
+
+    Returns
+    -------
+    DictConfig
+        Merged, structured OmegaConf configuration object.
+    """
+    base_path = CONFIGS_DIR / base
+    if not base_path.exists():
+        raise FileNotFoundError(f"Base config not found: {base_path}")
+
+    cfg: DictConfig = OmegaConf.load(base_path)
+    logger.debug("Loaded base config: %s", base_path)
+
+    for extra in extra_files or []:
+        extra_path = Path(extra) if Path(extra).is_absolute() else CONFIGS_DIR / extra
+        if not extra_path.exists():
+            raise FileNotFoundError(f"Extra config not found: {extra_path}")
+        extra_cfg = OmegaConf.load(extra_path)
+        cfg = OmegaConf.merge(cfg, extra_cfg)
+        logger.debug("Merged extra config: %s", extra_path)
+
+    if overrides:
+        cli_cfg = OmegaConf.from_dotlist(overrides)
+        cfg = OmegaConf.merge(cfg, cli_cfg)
+        logger.debug("Applied CLI overrides: %s", overrides)
+
+    # Resolve project root to an absolute path so downstream code can use it
+    OmegaConf.update(cfg, "paths.project_root", str(PROJECT_ROOT), merge=False)
+
+    _validate_config(cfg)
+    logger.info("Configuration loaded successfully.")
+    return cfg
+
+
+def _validate_config(cfg: DictConfig) -> None:
+    """Run basic sanity checks on the merged configuration."""
+    allowed_datasets = {"cifar10", "cifar100"}
+    if cfg.dataset.name not in allowed_datasets:
+        raise ValueError(
+            f"dataset.name must be one of {allowed_datasets}, got '{cfg.dataset.name}'"
+        )
+
+    num_classes_map = {"cifar10": 10, "cifar100": 100}
+    expected = num_classes_map[cfg.dataset.name]
+    if cfg.dataset.num_classes != expected:
+        raise ValueError(
+            f"dataset.num_classes={cfg.dataset.num_classes} does not match "
+            f"dataset.name='{cfg.dataset.name}' (expected {expected})."
+        )
+
+    if cfg.model.patch_size not in (8, 16, 32):
+        raise ValueError(f"model.patch_size must be 8, 16, or 32; got {cfg.model.patch_size}")
+
+    if cfg.model.image_size % cfg.model.patch_size != 0:
+        raise ValueError(
+            f"model.image_size ({cfg.model.image_size}) must be divisible by "
+            f"model.patch_size ({cfg.model.patch_size})."
+        )
+
+
+def get_device(cfg: DictConfig):
+    """Return the torch device based on config and hardware availability."""
+    import torch  # local import to keep this module lightweight
+
+    preference = cfg.hardware.device
+    if preference == "auto":
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
+    else:
+        device = torch.device(preference)
+
+    logger.info("Using device: %s", device)
+    return device
+
+
+def pretty_print(cfg: DictConfig) -> None:
+    """Print the configuration in human-readable YAML format."""
+    print(OmegaConf.to_yaml(cfg))

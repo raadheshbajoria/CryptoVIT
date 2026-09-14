@@ -1,0 +1,144 @@
+"""
+cryptovit/models/patch_embedding.py
+=====================================
+Patch embedding variants for CryptoViT.
+
+Standard ViT uses a simple linear projection (Conv2d) to embed patches.
+CryptoPatchEmbedding extends this with a two-path design that can learn
+a more robust mapping from encrypted patch representations.
+
+Design
+------
+* ``StandardPatchEmbedding``  — identical to the one in vit.py; re-exported
+  here for clarity and for use in ablation experiments.
+* ``CryptoPatchEmbedding``    — uses a small convolutional front-end
+  before the linear projection.  The extra convolutions give the model
+  capacity to handle the statistical properties of encrypted patches,
+  which have higher entropy and lower spatial correlation than plaintext.
+
+Both classes share the same interface (``__init__`` signature and
+``forward`` signature) so they can be swapped into ``VisionTransformer``
+via the ``patch_embedding_cls`` parameter.
+"""
+
+from __future__ import annotations
+
+import logging
+
+import torch
+import torch.nn as nn
+from einops import rearrange
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Standard patch embedding (re-export for convenience)
+# ---------------------------------------------------------------------------
+
+class StandardPatchEmbedding(nn.Module):
+    """Standard ViT patch embedding: Conv2d(in_channels, embed_dim, patch_size).
+
+    This is identical to the PatchEmbedding in vit.py.  It is duplicated
+    here so that ablation experiments can import both from one place.
+    """
+
+    def __init__(
+        self,
+        image_size: int = 224,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        embed_dim: int = 192,
+    ):
+        super().__init__()
+        assert image_size % patch_size == 0
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.num_patches = (image_size // patch_size) ** 2
+
+        self.projection = nn.Conv2d(
+            in_channels, embed_dim,
+            kernel_size=patch_size, stride=patch_size,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, C, H, W) → (B, N, embed_dim)"""
+        x = self.projection(x)
+        return rearrange(x, "b d h w -> b (h w) d")
+
+
+# ---------------------------------------------------------------------------
+# Crypto Patch Embedding
+# ---------------------------------------------------------------------------
+
+class CryptoPatchEmbedding(nn.Module):
+    """Custom patch embedding adapted for encrypted / high-entropy images.
+
+    Architecture
+    ------------
+    1. A small 3-layer convolutional front-end processes each patch locally.
+       Using ``kernel_size=3`` captures local structure while remaining
+       agnostic to global spatial layout (which is disrupted by encryption).
+    2. A final Conv2d with stride=patch_size performs the linear projection
+       (same as the standard embedding).
+
+    Compared to ``StandardPatchEmbedding``, this adds ~0.1M parameters
+    and allows the model to learn encryption-domain features before
+    projecting into the token space.
+
+    Parameters
+    ----------
+    image_size, patch_size, in_channels, embed_dim:
+        Same as ``StandardPatchEmbedding``.
+    hidden_dim:
+        Number of channels in the convolutional front-end (default 64).
+    """
+
+    def __init__(
+        self,
+        image_size: int = 224,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        embed_dim: int = 192,
+        hidden_dim: int = 64,
+    ):
+        super().__init__()
+        assert image_size % patch_size == 0
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.num_patches = (image_size // patch_size) ** 2
+
+        # Convolutional front-end (within-patch feature extraction)
+        self.conv_front = nn.Sequential(
+            nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
+            nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden_dim),
+            nn.GELU(),
+        )
+
+        # Patch projection: same as standard but on hidden features
+        self.projection = nn.Conv2d(
+            hidden_dim, embed_dim,
+            kernel_size=patch_size, stride=patch_size,
+        )
+
+        # Weight initialisation
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+
+        logger.info(
+            "CryptoPatchEmbedding | patch=%d  hidden=%d  embed=%d  patches=%d",
+            patch_size, hidden_dim, embed_dim, self.num_patches,
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, C, H, W) → (B, N, embed_dim)"""
+        x = self.conv_front(x)      # (B, hidden_dim, H, W)
+        x = self.projection(x)      # (B, embed_dim, H/P, W/P)
+        return rearrange(x, "b d h w -> b (h w) d")

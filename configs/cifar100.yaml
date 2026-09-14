@@ -1,0 +1,13 @@
+﻿# configs/cifar100.yaml
+# Overrides for CIFAR-100 main benchmark
+# Merge on top of base.yaml
+
+dataset:
+  name: cifar100
+  num_classes: 100
+  augmentation:
+    mean: [0.5071, 0.4867, 0.4408]
+    std:  [0.2675, 0.2565, 0.2761]
+
+model:
+  num_classes: 100

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryptovit"
+version = "0.1.0"
+description = "Chaos-Assisted Vision Transformer for Privacy-Preserving Classification"
+requires-python = ">=3.9"
+dependencies = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "timm>=0.9",
+    "omegaconf>=2.3",
+    "numpy>=1.24",
+    "pillow>=9.0",
+    "matplotlib>=3.7",
+    "scikit-learn>=1.3",
+    "tqdm>=4.65",
+    "rich>=13.0",
+    "einops>=0.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+]
+dashboard = [
+    "streamlit>=1.32",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
