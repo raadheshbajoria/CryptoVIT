@@ -1,0 +1,267 @@
+{
+  "timestamp": "20261022_211230",
+  "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+  "pytorch_version": "2.5.1+cu121",
+  "cuda_available": true,
+  "device_name": "NVIDIA GeForce RTX 2050",
+  "total_parameters": 525994,
+  "training_time_seconds": 177.32143592834473,
+  "best_checkpoint": "C:\\Users\\User\\OneDrive\\Desktop\\Capstone Project\\CryptoVIT\\experiments\\review_baseline_20261022_211230\\checkpoints\\checkpoint_epoch0005_acc0.3110.pt",
+  "history": {
+    "train_loss": [
+      2.1743590171813967,
+      2.0818921405792237,
+      2.018155883026123,
+      1.9795973150253297,
+      1.9590669399261476
+    ],
+    "train_acc": [
+      0.1952,
+      0.2478,
+      0.2828,
+      0.3052,
+      0.3162
+    ],
+    "val_loss": [
+      2.108167169570923,
+      2.0510704803466795,
+      1.9878211011886597,
+      1.961875018119812,
+      1.9554644289016723
+    ],
+    "val_acc": [
+      0.232,
+      0.28,
+      0.288,
+      0.306,
+      0.311
+    ],
+    "lr": [
+      0.0003,
+      0.00025621246378738883,
+      0.0001505,
+      4.4787536212611154e-05,
+      1e-06
+    ]
+  },
+  "test_metrics": {
+    "accuracy": 0.3139,
+    "precision": 0.3123477997514742,
+    "recall": 0.3139,
+    "f1": 0.2944638735882282,
+    "per_class_precision": [
+      0.39315525876460766,
+      0.34281650071123754,
+      0.272,
+      0.24770642201834864,
+      0.38076923076923075,
+      0.29026036644165865,
+      0.31674842326559216,
+      0.2678725236864772,
+      0.3368950345694532,
+      0.2752542372881356
+    ],
+    "per_class_recall": [
+      0.471,
+      0.241,
+      0.034,
+      0.189,
+      0.198,
+      0.301,
+      0.452,
+      0.311,
+      0.536,
+      0.406
+    ],
+    "per_class_f1": [
+      0.42857142857142855,
+      0.28302994715208457,
+      0.060444444444444446,
+      0.2144072603516733,
+      0.26052631578947366,
+      0.29553264604810997,
+      0.3724763081994232,
+      0.2878297084683017,
+      0.4137398687765342,
+      0.3280808080808081
+    ],
+    "throughput_img_per_sec": 435.609953210541,
+    "peak_gpu_memory_mb": 82.21533203125,
+    "num_samples": 10000,
+    "class_names": [
+      "airplane",
+      "automobile",
+      "bird",
+      "cat",
+      "deer",
+      "dog",
+      "frog",
+      "horse",
+      "ship",
+      "truck"
+    ],
+    "train_time_seconds": 177.32143592834473,
+    "train_samples": 5000,
+    "val_samples": 1000,
+    "model_name": "vit_tiny",
+    "dataset_name": "cifar10",
+    "best_checkpoint": "C:\\Users\\User\\OneDrive\\Desktop\\Capstone Project\\CryptoVIT\\experiments\\review_baseline_20261022_211230\\checkpoints\\checkpoint_epoch0005_acc0.3110.pt"
+  },
+  "config": {
+    "project": {
+      "name": "CryptoViT",
+      "version": "0.1.0",
+      "description": "Chaos-Assisted Vision Transformer for Privacy-Preserving Classification",
+      "seed": 42
+    },
+    "paths": {
+      "data_dir": "data",
+      "raw_dir": "data/raw",
+      "processed_dir": "data/processed",
+      "encrypted_dir": "data/encrypted",
+      "experiments_dir": "experiments",
+      "checkpoints_dir": "experiments/checkpoints",
+      "logs_dir": "experiments/logs",
+      "results_dir": "experiments/results",
+      "project_root": "C:\\Users\\User\\OneDrive\\Desktop\\Capstone Project\\CryptoVIT"
+    },
+    "dataset": {
+      "name": "cifar10",
+      "image_size": 96,
+      "num_classes": 10,
+      "train_split": 0.9,
+      "num_workers": 2,
+      "pin_memory": true,
+      "augmentation": {
+        "random_crop": true,
+        "crop_padding": 4,
+        "random_horizontal_flip": true,
+        "color_jitter": false,
+        "color_jitter_strength": 0.4,
+        "random_erasing": false,
+        "normalize": true,
+        "mean": [
+          0.4914,
+          0.4822,
+          0.4465
+        ],
+        "std": [
+          0.2023,
+          0.1994,
+          0.201
+        ]
+      }
+    },
+    "model": {
+      "name": "vit_tiny",
+      "image_size": 96,
+      "patch_size": 16,
+      "in_channels": 3,
+      "embed_dim": 96,
+      "depth": 4,
+      "num_heads": 3,
+      "mlp_ratio": 4.0,
+      "dropout": 0.1,
+      "attn_dropout": 0.0,
+      "drop_path_rate": 0.1,
+      "num_classes": 10,
+      "use_cls_token": true,
+      "pool": "cls"
+    },
+    "encryption": {
+      "enabled": false,
+      "system": "hyperchaotic_4d",
+      "transient_steps": 1000,
+      "use_pixel_permutation": true,
+      "use_patch_permutation": true,
+      "use_diffusion": true,
+      "use_dna": true
+    },
+    "training": {
+      "epochs": 5,
+      "batch_size": 64,
+      "accumulation_steps": 1,
+      "mixed_precision": true,
+      "optimizer": "adamw",
+      "learning_rate": 0.0003,
+      "weight_decay": 0.05,
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "scheduler": "cosine",
+      "warmup_epochs": 1,
+      "min_lr": 1e-06,
+      "label_smoothing": 0.1,
+      "clip_grad_norm": 1.0,
+      "save_every_n_epochs": 1,
+      "keep_best_k": 3,
+      "early_stopping_patience": 20
+    },
+    "evaluation": {
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1",
+        "confusion_matrix"
+      ],
+      "batch_size": 256
+    },
+    "logging": {
+      "level": "INFO",
+      "use_tensorboard": false,
+      "use_mlflow": false,
+      "mlflow_uri": "mlruns",
+      "log_every_n_steps": 50
+    },
+    "hardware": {
+      "device": "auto",
+      "num_gpus": 1
+    }
+  },
+  "train_indices_sample": [
+    37542,
+    44491,
+    216,
+    43688,
+    41558,
+    32245,
+    27206,
+    10863,
+    2190,
+    31849,
+    25408,
+    33504,
+    27102,
+    21934,
+    40181,
+    47682,
+    45747,
+    17004,
+    43777,
+    7433
+  ],
+  "val_indices_sample": [
+    26706,
+    30220,
+    3602,
+    42036,
+    32047,
+    24787,
+    43778,
+    23941,
+    24575,
+    36355,
+    2499,
+    30881,
+    7075,
+    24743,
+    11088,
+    17660,
+    32408,
+    27575,
+    48179,
+    35610
+  ]
+}

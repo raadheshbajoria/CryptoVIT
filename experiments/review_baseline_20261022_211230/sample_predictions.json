@@ -1,0 +1,72 @@
+[
+  {
+    "index": 0,
+    "pred_idx": 9,
+    "pred_class": "truck",
+    "true_idx": 3,
+    "true_class": "cat"
+  },
+  {
+    "index": 1,
+    "pred_idx": 8,
+    "pred_class": "ship",
+    "true_idx": 8,
+    "true_class": "ship"
+  },
+  {
+    "index": 2,
+    "pred_idx": 8,
+    "pred_class": "ship",
+    "true_idx": 8,
+    "true_class": "ship"
+  },
+  {
+    "index": 3,
+    "pred_idx": 8,
+    "pred_class": "ship",
+    "true_idx": 0,
+    "true_class": "airplane"
+  },
+  {
+    "index": 4,
+    "pred_idx": 4,
+    "pred_class": "deer",
+    "true_idx": 6,
+    "true_class": "frog"
+  },
+  {
+    "index": 5,
+    "pred_idx": 6,
+    "pred_class": "frog",
+    "true_idx": 6,
+    "true_class": "frog"
+  },
+  {
+    "index": 6,
+    "pred_idx": 1,
+    "pred_class": "automobile",
+    "true_idx": 1,
+    "true_class": "automobile"
+  },
+  {
+    "index": 7,
+    "pred_idx": 7,
+    "pred_class": "horse",
+    "true_idx": 6,
+    "true_class": "frog"
+  },
+  {
+    "index": 8,
+    "pred_idx": 5,
+    "pred_class": "dog",
+    "true_idx": 3,
+    "true_class": "cat"
+  },
+  {
+    "index": 9,
+    "pred_idx": 0,
+    "pred_class": "airplane",
+    "true_idx": 1,
+    "true_class": "automobile"
+  }
+]
