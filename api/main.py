@@ -274,14 +274,18 @@ async def model_info():
 @app.post("/encrypt")
 async def encrypt_image(
     file: UploadFile = File(...),
-    key: str = Form(default=DEFAULT_KEY),
+    # Required at the framework layer: FastAPI substitutes the Form default when a
+    # multipart value is empty, so a defaulted key let an empty key silently encrypt
+    # under the well-known DEFAULT_KEY (verified live). Required + strip() check
+    # rejects empty (422) and whitespace-only (400) keys over real HTTP.
+    key: str = Form(...),
 ):
     """Encrypt an uploaded image array using hyperchaotic permutation and diffusion.
     Computes security metrics for the encryption demonstration.
     """
     global _last_metrics
 
-    if not key:
+    if not key or not key.strip():
         raise HTTPException(status_code=400, detail="Encryption key must not be empty.")
 
     try:
@@ -311,10 +315,10 @@ async def encrypt_image(
 @app.post("/decrypt")
 async def decrypt_image(
     file: UploadFile = File(...),
-    key: str = Form(default=DEFAULT_KEY),
+    key: str = Form(...),  # Same rationale as /encrypt: avoid silent DEFAULT_KEY fallback.
 ):
     """Decrypt an encrypted image with the provided key (demonstration endpoint)."""
-    if not key:
+    if not key or not key.strip():
         raise HTTPException(status_code=400, detail="Decryption key must not be empty.")
 
     try:

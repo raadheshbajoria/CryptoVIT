@@ -27,6 +27,14 @@ import requests
 import streamlit as st
 from PIL import Image
 
+from dashboard.state_helpers import (
+    check_and_update_prediction_image,
+    check_and_update_source_image,
+    reset_decryption_derived_state,
+    reset_encryption_derived_state,
+    reset_prediction_derived_state,
+)
+
 # -------------------------------------------------------------------------
 # Page Configuration
 # -------------------------------------------------------------------------
@@ -175,8 +183,8 @@ with tab_overview:
             **Milestone Status (Review Baseline)**
             - **Standard ViT Baseline**: ✅ Genuinely trained (`vit_tiny`, 5 epochs on 5,000 samples)
             - **Baseline Test Accuracy**: **31.39%** on official CIFAR-10 test set (3,139 / 10,000)
-            - **Unit Test Suite**: ✅ 71/71 tests passing (100% pass rate)
-            - **Hyperchaotic Cipher**: ✅ Exact round-trip invertibility verified
+            - **Unit Test Suite**: ✅ 85/85 tests passing in the latest verification (2026-10-23)
+            - **Hyperchaotic Cipher**: ✅ Exact round-trip invertibility verified for tested inputs
             - **CryptoViT Encrypted Model**: ⏳ **Pending validation** (training not yet executed)
             """
         )
@@ -225,7 +233,7 @@ with tab_encrypt:
     st.header("Hyperchaotic Encryption & Decryption Demonstration")
     st.markdown(
         "Demonstrates the deterministic image transformation pipeline using hyperchaotic sequences, "
-        "permutation, and DNA-based diffusion. This tab allows testing invertibility on user-uploaded images."
+        "permutation, and DNA-based diffusion. This tab allows testing functional invertibility on user-uploaded images."
     )
     
     enc_col1, enc_col2 = st.columns([1, 1])
@@ -243,25 +251,33 @@ with tab_encrypt:
         st.caption("Key Hygiene & Privacy Notice")
         st.info("The key is passed directly to the local encryption module via POST request to calculate chaotic trajectories. Never reuse production cryptographic keys.")
 
+    if "tab2_uploader_nonce" not in st.session_state:
+        st.session_state["tab2_uploader_nonce"] = 0
     uploaded_enc_file = st.file_uploader(
         "Choose an image for encryption testing (PNG or JPG)",
         type=["png", "jpg", "jpeg"],
-        key="tab2_uploader",
+        key=f"tab2_uploader_{st.session_state['tab2_uploader_nonce']}",
     )
     
     # Quick CIFAR sample loader button
     if st.button("Load Local CIFAR-10 Test Sample", key="btn_load_sample"):
         sample_img = load_sample_test_image()
         if sample_img:
-            st.session_state["demo_orig_img"] = sample_img
+            # Reset the uploader so an already-attached file cannot override the sample on rerun.
+            st.session_state["tab2_uploader_nonce"] += 1
+            check_and_update_source_image(st.session_state, sample_img)
+            st.rerun()
         else:
             st.warning("Local CIFAR-10 test sample file not found in `data/raw/`.")
 
     if uploaded_enc_file is not None:
         try:
-            st.session_state["demo_orig_img"] = Image.open(uploaded_enc_file).convert("RGB")
+            new_pil = Image.open(uploaded_enc_file).convert("RGB")
+            check_and_update_source_image(st.session_state, new_pil)
         except (OSError, ValueError) as e:
             st.session_state.pop("demo_orig_img", None)
+            st.session_state.pop("demo_orig_img_id", None)
+            reset_encryption_derived_state(st.session_state)
             st.error(f"Could not read the uploaded image: {e}")
 
     if "demo_orig_img" in st.session_state:
@@ -273,6 +289,14 @@ with tab_encrypt:
             st.subheader("1. Original Image")
             st.image(orig_img, caption=f"Original ({orig_img.size[0]}×{orig_img.size[1]} px)", use_container_width=True)
             if st.button("🔒 Encrypt Image", key="btn_encrypt"):
+                # Finding A: Invalidate any previous recovered image and comparison results when initiating a new encryption
+                reset_decryption_derived_state(st.session_state)
+                # If encryption fails, clear previous encrypted output so stale output is not mistaken for new result
+                st.session_state.pop("demo_enc_img", None)
+                st.session_state.pop("demo_enc_bytes", None)
+                st.session_state.pop("demo_metrics", None)
+                st.session_state.pop("demo_metrics_error", None)
+
                 if not health_info:
                     st.error("API backend offline. Start the FastAPI server first.")
                 else:
@@ -290,6 +314,18 @@ with tab_encrypt:
                                 st.session_state["demo_enc_key"] = enc_key
                                 st.session_state["demo_key_hash"] = r.headers.get("X-Encryption-KeyHash", "N/A")
                                 st.success("Encryption complete!")
+                                # Immediately attempt to fetch the freshly computed metrics
+                                try:
+                                    m_resp = requests.get(f"{api_url}/metrics", timeout=5)
+                                    if m_resp.status_code == 200:
+                                        st.session_state["demo_metrics"] = m_resp.json()
+                                        st.session_state.pop("demo_metrics_error", None)
+                                    else:
+                                        st.session_state["demo_metrics"] = None
+                                        st.session_state["demo_metrics_error"] = f"Metrics unavailable (status {m_resp.status_code})"
+                                except requests.RequestException as me:
+                                    st.session_state["demo_metrics"] = None
+                                    st.session_state["demo_metrics_error"] = f"Unable to fetch metrics: {me}"
                             else:
                                 st.error(f"Encryption error ({r.status_code}): {r.text}")
                         except requests.RequestException as e:
@@ -297,7 +333,7 @@ with tab_encrypt:
         
         with c2:
             st.subheader("2. Protected Image")
-            if "demo_enc_img" in st.session_state:
+            if "demo_enc_img" in st.session_state and st.session_state["demo_enc_img"] is not None:
                 enc_display = st.session_state["demo_enc_img"]
                 st.image(enc_display, caption="Ciphertext Visualization", use_container_width=True)
                 st.caption(f"Key Hash: `{st.session_state.get('demo_key_hash', 'N/A')[:16]}...`")
@@ -310,6 +346,9 @@ with tab_encrypt:
                 
                 dec_key_input = st.text_input("Decryption Key", value=enc_key, type="password", key="tab2_dec_key")
                 if st.button("🔓 Decrypt Image", key="btn_decrypt"):
+                    # Invalidate prior recovered result before new decryption attempt
+                    reset_decryption_derived_state(st.session_state)
+
                     if not health_info:
                         st.error("API backend offline.")
                     else:
@@ -335,11 +374,11 @@ with tab_encrypt:
         
         with c3:
             st.subheader("3. Recovered Image & Check")
-            if "demo_dec_img" in st.session_state:
+            if "demo_dec_img" in st.session_state and st.session_state["demo_dec_img"] is not None:
                 dec_display = st.session_state["demo_dec_img"]
                 st.image(dec_display, caption=f"Recovered ({dec_display.size[0]}×{dec_display.size[1]} px)", use_container_width=True)
                 
-                # Verification of invertibility
+                # Verification of functional invertibility
                 orig_arr = np.array(orig_img)
                 dec_arr = np.array(dec_display)
                 
@@ -355,34 +394,48 @@ with tab_encrypt:
             else:
                 st.info("Decrypted output will appear here after decryption.")
         
-        # Security metrics display
-        if "demo_enc_img" in st.session_state:
+        # Finding B: Security metrics display without fabricated numeric fallbacks
+        if "demo_enc_img" in st.session_state and st.session_state["demo_enc_img"] is not None:
             st.divider()
             st.subheader("Statistical Properties of Protected Representation")
-            try:
-                m_resp = requests.get(f"{api_url}/metrics", timeout=5)
-                if m_resp.status_code == 200:
-                    metrics = m_resp.json()
-                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                    
-                    ent_val = metrics.get("entropy", {}).get("overall", 0.0)
-                    npcr_val = metrics.get("npcr_plain_vs_enc", 0.0)
-                    uaci_val = metrics.get("uaci_plain_vs_enc", 0.0)
-                    h_corr = metrics.get("correlation_encrypted", {}).get("horizontal", 0.0)
-                    
-                    col_m1.metric("Information Entropy", f"{ent_val:.4f}", help="Theoretical maximum: 8.0000 for uniform byte distribution.")
-                    col_m2.metric("NPCR (Plain vs Cipher)", f"{npcr_val:.2f}%", help="Percentage of differing pixels.")
-                    col_m3.metric("UACI (Plain vs Cipher)", f"{uaci_val:.2f}%", help="Mean intensity difference.")
-                    col_m4.metric("Horizontal Correlation", f"{h_corr:.4f}", help="Spatial correlation between adjacent pixels (Target ~ 0).")
-                    
-                    st.caption(
-                        "ℹ️ *Note for reviewers: Statistical metrics quantify visual randomness and diffusion, "
-                        "but do not alone constitute formal semantic security proofs.*"
-                    )
-                else:
-                    st.warning(f"Could not load encryption metrics ({m_resp.status_code}): {m_resp.text}")
-            except requests.RequestException as e:
-                st.warning(f"Could not load encryption metrics: {e}")
+
+            metrics = st.session_state.get("demo_metrics")
+            metrics_err = st.session_state.get("demo_metrics_error")
+
+            # Try to fetch if not yet loaded and no error recorded
+            if metrics is None and metrics_err is None and health_info:
+                try:
+                    m_resp = requests.get(f"{api_url}/metrics", timeout=5)
+                    if m_resp.status_code == 200:
+                        metrics = m_resp.json()
+                        st.session_state["demo_metrics"] = metrics
+                    else:
+                        metrics_err = f"Metrics unavailable (status {m_resp.status_code})"
+                        st.session_state["demo_metrics_error"] = metrics_err
+                except requests.RequestException as e:
+                    metrics_err = f"Unable to compute or fetch metrics: {e}"
+                    st.session_state["demo_metrics_error"] = metrics_err
+
+            if metrics:
+                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+
+                ent_val = metrics.get("entropy", {}).get("overall")
+                npcr_val = metrics.get("npcr_plain_vs_enc")
+                uaci_val = metrics.get("uaci_plain_vs_enc")
+                h_corr = metrics.get("correlation_encrypted", {}).get("horizontal")
+
+                col_m1.metric("Information Entropy", f"{ent_val:.4f}" if ent_val is not None else "Unavailable", help="Theoretical maximum: 8.0000 for uniform byte distribution.")
+                col_m2.metric("NPCR (Plain vs Cipher)", f"{npcr_val:.2f}%" if npcr_val is not None else "Unavailable", help="Percentage of differing pixels.")
+                col_m3.metric("UACI (Plain vs Cipher)", f"{uaci_val:.2f}%" if uaci_val is not None else "Unavailable", help="Mean intensity difference.")
+                col_m4.metric("Horizontal Correlation", f"{h_corr:.4f}" if h_corr is not None else "Unavailable", help="Spatial correlation between adjacent pixels (Target ~ 0).")
+
+                st.caption(
+                    "ℹ️ *Note for reviewers: Statistical metrics quantify visual dispersion and diffusion. "
+                    "A successful round-trip test verifies functional reversibility for the tested inputs and matching keys; "
+                    "it does not establish cryptographic security or independently validate the dynamical properties of the hyperchaotic generator.*"
+                )
+            else:
+                st.warning(metrics_err or "Statistical metrics are currently unavailable.")
 
 
 # =========================================================================
@@ -408,19 +461,27 @@ with tab_baseline:
         pred_upload = st.file_uploader(
             "Upload image for classification",
             type=["png", "jpg", "jpeg"],
-            key="tab3_uploader",
+            key=f"tab3_uploader_{st.session_state.get('tab3_uploader_nonce', 0)}",
         )
         
         if st.button("Use Sample CIFAR-10 Test Image", key="tab3_sample_btn"):
             sample_cifar = load_sample_test_image()
             if sample_cifar:
-                st.session_state["tab3_img"] = sample_cifar
+                # Finding E: Reset previous prediction when input image changes via sample button
+                # Also reset the uploader so an attached file cannot override the sample on rerun.
+                st.session_state["tab3_uploader_nonce"] = st.session_state.get("tab3_uploader_nonce", 0) + 1
+                check_and_update_prediction_image(st.session_state, sample_cifar)
+                st.rerun()
         
         if pred_upload is not None:
             try:
-                st.session_state["tab3_img"] = Image.open(pred_upload).convert("RGB")
+                new_pred_pil = Image.open(pred_upload).convert("RGB")
+                # Finding E: Reset previous prediction when input image changes via file uploader
+                check_and_update_prediction_image(st.session_state, new_pred_pil)
             except (OSError, ValueError) as e:
                 st.session_state.pop("tab3_img", None)
+                st.session_state.pop("tab3_img_id", None)
+                reset_prediction_derived_state(st.session_state)
                 st.error(f"Could not read the uploaded image: {e}")
         
         if "tab3_img" in st.session_state:
@@ -437,7 +498,7 @@ with tab_baseline:
         st.subheader("Model Prediction")
         if predict_btn and "tab3_img" in st.session_state:
             with st.spinner("Running forward pass through VisionTransformer..."):
-                st.session_state.pop("last_baseline_pred", None)
+                reset_prediction_derived_state(st.session_state)
                 try:
                     r_pred = requests.post(
                         f"{api_url}/predict_plaintext",
@@ -537,10 +598,12 @@ with tab_results:
         }
         st.dataframe(prog_data, use_container_width=True)
         
+        # Finding D: Qualified AMP explanation
         st.caption(
             "**Evaluation Note**: The independent baseline audit reproduced exactly 3,139 / 10,000 correct (31.39% accuracy) "
-            "and 0.3139 recall. Minor floating-point variations in precision/F1 between the review log and independent audit "
-            "are attributable to FP16 mixed-precision (AMP) during review execution vs full FP32 independent verification."
+            "and 0.3139 macro recall. The original run used CUDA AMP, while the independent evaluation used FP32. "
+            "This difference in precision mode is a plausible explanation for the small metric discrepancy in precision and F1, "
+            "but the cause has not been isolated."
         )
     else:
         st.warning(f"Experiment artifact files not found in `{REVIEW_EXP_DIR}`.")

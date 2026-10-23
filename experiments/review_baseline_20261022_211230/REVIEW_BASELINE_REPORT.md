@@ -153,7 +153,7 @@ All run outputs were stored inside a dedicated timestamped directory and confirm
 `experiments/review_baseline_20261022_211230/`
 
 1. **Model Checkpoint:**  
-   `experiments/review_baseline_20261022_211230/checkpoints/checkpoint_epoch0005_acc0.3110.pt` (Size: 2.11 MB)
+   `experiments/review_baseline_20261022_211230/checkpoints/checkpoint_epoch0005_acc0.3110.pt` (Size: 6,384,302 bytes, approx. 6.38 MB decimal / 6.09 MiB binary)
 2. **Training History Log:**  
    `experiments/review_baseline_20261022_211230/history.json`
 3. **Loss & Accuracy Plot:**  

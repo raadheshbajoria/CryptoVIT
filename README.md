@@ -60,10 +60,14 @@ The repository includes a local FastAPI backend and a Streamlit review dashboard
 
 - Python **3.11.9** was used for the verified review environment. The project metadata supports Python 3.9 and newer.
 - A CUDA-capable NVIDIA GPU is optional. The reviewed setup used an NVIDIA GeForce RTX 2050 Laptop GPU with CUDA-enabled PyTorch; inference can also run on CPU, though it may be slower.
-- From Windows PowerShell, enter the repository and create/activate a virtual environment if one is not already available:
+- From Windows PowerShell, enter your cloned repository root directory and create/activate a virtual environment if one is not already available:
 
   ```powershell
-  Set-Location 'C:\Users\User\OneDrive\Desktop\Capstone Project\CryptoVIT'
+  # If cloning afresh:
+  # git clone https://github.com/raadheshbajoria/CryptoVIT.git
+  # cd CryptoVIT
+
+  # From your repository root:
   py -3.11 -m venv .venv
   .\.venv\Scripts\Activate.ps1
   ```

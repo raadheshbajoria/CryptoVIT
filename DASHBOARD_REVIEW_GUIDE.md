@@ -12,8 +12,8 @@
 | Component | Status | Key Metrics / Evidence |
 | :--- | :--- | :--- |
 | **Standard ViT Baseline** | ✅ **Trained & Audited** | `vit_tiny` (525,994 params), **31.39% accuracy** on 10,000 official CIFAR-10 test set |
-| **Full Test Suite** | ✅ **100% Passed** | **81/81 passed** (including API endpoints) |
-| **Hyperchaotic Encryption Engine** | ✅ **Verified** | Invertible 4D hyperchaotic map + pixel permutation + DNA dynamic diffusion |
+| **Full Test Suite** | ✅ **100% Passed** | **85/85 passed in the latest verification (2026-10-23)** (including API endpoints) |
+| **Hyperchaotic Transformation Module** | ✅ **Functional Reversibility Verified** | Reversible 4D hyperchaotic map + pixel permutation + DNA dynamic diffusion (exact round-trip on tested inputs) |
 | **FastAPI Backend (`api/main.py`)** | ✅ **Operational** | Strict checkpoint loading; blocks untrained model inference |
 | **Streamlit Dashboard (`dashboard/app.py`)** | ✅ **Operational** | 5 comprehensive review tabs with live backend integration |
 | **CryptoViT Encrypted Model** | ⏳ **Pending Validation** | Architecture implemented; training scheduled for next experimental phase |
@@ -26,7 +26,7 @@ All baseline assets reside in an isolated, git-ignored directory:
 `experiments/review_baseline_20261022_211230/`
 
 - **Trained Model Checkpoint:**  
-  `experiments/review_baseline_20261022_211230/checkpoints/checkpoint_epoch0005_acc0.3110.pt` (6,384,302 bytes)
+  `experiments/review_baseline_20261022_211230/checkpoints/checkpoint_epoch0005_acc0.3110.pt` (6,384,302 bytes, approx. 6.38 MB decimal / 6.09 MiB binary)
 - **Detailed Audit Reports:**  
   - `CRYPTOVIT_EXISTING_IMPLEMENTATION_AUDIT.md` (Initial system audit)  
   - `BASELINE_TRAINING_AUDIT.md` (Independent verification of checkpoint & metrics)  
@@ -44,16 +44,16 @@ All baseline assets reside in an isolated, git-ignored directory:
 - **Python Version:** Python 3.11 (Windows)
 - **Virtual Environment:** `.\.venv`
 - **PyTorch Build:** `torch 2.5.1+cu121`, `torchvision 0.20.1+cu121`
-- **Acceleration:** CUDA enabled (tested on NVIDIA GeForce RTX 2050 GPU)
+- **Acceleration:** CUDA enabled (tested on NVIDIA GeForce RTX 2050 GPU; CPU fallback supported)
 
 ---
 
 ## 4. How to Launch the Application (Step-by-Step)
 
-The application requires running the **FastAPI backend** and the **Streamlit frontend** in two separate PowerShell terminals from the project root:
+The application requires running the **FastAPI backend** and the **Streamlit frontend** in two separate PowerShell terminals opened at your repository root directory:
 
 ### Terminal 1: Start the FastAPI Backend
-Open a PowerShell terminal at `C:\Users\User\OneDrive\Desktop\Capstone Project\CryptoVIT`:
+From your repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8000
@@ -70,7 +70,7 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 ---
 
 ### Terminal 2: Start the Streamlit Dashboard
-Open a second PowerShell terminal at `C:\Users\User\OneDrive\Desktop\Capstone Project\CryptoVIT`:
+From your repository root, in a second terminal:
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run dashboard/app.py --server.address 127.0.0.1 --server.port 8501
@@ -98,8 +98,9 @@ The dashboard contains 5 dedicated tabs tailored for the project review:
 
 ### Tab 2: Hyperchaotic Encryption Demonstration
 - **Upload Image or Load CIFAR-10 Sample**: Click *"Load Local CIFAR-10 Test Sample"* or upload an image.
-- **Encrypt**: Set a secret key and click *"🔒 Encrypt Image"*. The interface renders the ciphertext representation and reports statistical metrics (information entropy, NPCR, UACI, and horizontal correlation).
+- **Encrypt**: Set a secret key and click *"🔒 Encrypt Image"*. The interface renders the ciphertext representation and reports available statistical metrics (information entropy, NPCR, UACI, and horizontal correlation).
 - **Decrypt**: Click *"🔓 Decrypt Image"*. The interface recovers the original pixels and programmatically verifies **exact mathematical invertibility** (`Array difference = 0`).
+- **Scope Qualification**: The round-trip test verifies functional reversibility for the tested inputs and matching keys. It does not establish cryptographic security or independently validate the statistical and dynamical properties of the hyperchaotic generator.
 
 ### Tab 3: Standard ViT Baseline Classification
 - Evaluates the **trained `vit_tiny` baseline checkpoint** on plaintext images.
@@ -112,6 +113,7 @@ The dashboard contains 5 dedicated tabs tailored for the project review:
 - Displays the training & validation loss/accuracy curves.
 - Renders the normalized confusion matrix across all 10 CIFAR-10 classes on the 10,000-image official test set.
 - Highlights the held-out test accuracy of **31.39%**.
+- Discloses that the difference in precision mode between CUDA AMP (original run) and FP32 (independent audit) is a plausible explanation for minor precision/F1 variations, though the cause has not been isolated.
 
 ### Tab 5: CryptoViT Development Status
 - Explains the architectural design of CryptoViT (convolutional Crypto Patch Embedding, Key-Aware Positional Encoding).
