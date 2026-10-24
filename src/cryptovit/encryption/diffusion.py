@@ -163,23 +163,22 @@ def _chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
     a trivially predictable starting condition.
     """
     n = len(data)
-    out = np.empty(n, dtype=np.uint8)
-    prev = key[n - 1] if n > 0 else np.uint8(0)
-    for i in range(n):
-        out[i] = data[i] ^ key[i] ^ prev
-        prev = out[i]
-    return out
+    if n == 0:
+        return np.empty(0, dtype=np.uint8)
+    # Unrolling out[i] = d[i]^k[i]^out[i-1] gives a running XOR of (d^k),
+    # seeded with key[-1]; this is the vectorised form of the sequential loop.
+    mixed = np.bitwise_xor(data.astype(np.uint8), key[:n].astype(np.uint8))
+    return np.bitwise_xor.accumulate(mixed) ^ np.uint8(key[n - 1])
 
 
 def _inverse_chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
-    """Inverse of ``_chain_xor``."""
+    """Inverse of ``_chain_xor``: out[i] = data[i] ^ key[i] ^ data[i-1]."""
     n = len(data)
-    out = np.empty(n, dtype=np.uint8)
-    prev = key[n - 1] if n > 0 else np.uint8(0)
-    for i in range(n):
-        out[i] = data[i] ^ key[i] ^ prev
-        prev = data[i]
-    return out
+    if n == 0:
+        return np.empty(0, dtype=np.uint8)
+    data = data.astype(np.uint8)
+    previous = np.concatenate(([np.uint8(key[n - 1])], data[:-1]))
+    return data ^ key[:n].astype(np.uint8) ^ previous
 
 
 # ---------------------------------------------------------------------------

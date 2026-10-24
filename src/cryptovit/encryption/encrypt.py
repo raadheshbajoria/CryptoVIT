@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from functools import lru_cache
 from typing import Dict, Tuple
 
 import numpy as np
@@ -47,6 +48,30 @@ from cryptovit.encryption.permutation import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=8)
+def _key_streams(
+    key: bytes, n: int, transient_steps: int
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Derive (permutation, keystream, DNA rules) for ``n`` pixels.
+
+    The streams depend only on (key, n, transient_steps), not on the image
+    content, so they are computed once and reused for every image of the same
+    size. Generation order matters and is fixed: permutation, keystream, rules.
+    The returned arrays are read-only because they are shared between calls.
+    """
+    kg = KeyGenerator(key, transient_steps=transient_steps)
+    perm = kg.pixel_permutation(n)
+    keystream = kg.diffusion_keystream(n)
+    rules = kg.dna_rule_sequence(n)
+    for arr in (perm, keystream, rules):
+        arr.setflags(write=False)
+    return perm, keystream, rules
+
+
+def _as_key_bytes(key: str | bytes) -> bytes:
+    return key.encode("utf-8") if isinstance(key, str) else key
 
 
 def encrypt(
@@ -78,19 +103,15 @@ def encrypt(
     H, W = image.shape[:2]
     n = H * W
 
-    # --- Key generation ---
-    kg = KeyGenerator(key, transient_steps=transient_steps)
+    key_bytes = _as_key_bytes(key)
+    perm, ks, rules = _key_streams(key_bytes, n, transient_steps)
 
     # Phase 3: Permutation
-    perm = kg.pixel_permutation(n)
     permuted = permute_image(image, perm)
 
     # Phase 4: Diffusion
-    ks   = kg.diffusion_keystream(n)
-    rules = kg.dna_rule_sequence(n)
     encrypted = diffuse(permuted, ks, rules)
 
-    key_bytes = key.encode("utf-8") if isinstance(key, str) else key
     meta = {
         "shape": image.shape,
         "key_hash": hashlib.sha256(key_bytes).hexdigest(),
@@ -127,13 +148,8 @@ def decrypt(
     H, W = encrypted.shape[:2]
     n = H * W
 
-    # Re-derive the same key-streams (reset ensures identical sequence)
-    kg = KeyGenerator(key, transient_steps=transient_steps)
-
-    # Must regenerate in the same order as encrypt
-    perm   = kg.pixel_permutation(n)
-    ks     = kg.diffusion_keystream(n)
-    rules  = kg.dna_rule_sequence(n)
+    # Same streams as encrypt (derived in the same fixed order, then cached)
+    perm, ks, rules = _key_streams(_as_key_bytes(key), n, transient_steps)
 
     # Undo diffusion
     undiffused = inverse_diffuse(encrypted, ks, rules)
