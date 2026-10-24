@@ -1,0 +1,42 @@
+[
+  {
+    "index": 846,
+    "label": "melanoma",
+    "plain_pred": "melanoma",
+    "plain_conf": 0.6209011673927307,
+    "enc_pred": "melanoma",
+    "enc_conf": 0.6503040790557861,
+    "role": "safe",
+    "file_stem": "safe_melanoma_test846"
+  },
+  {
+    "index": 30,
+    "label": "melanocytic nevi",
+    "plain_pred": "melanocytic nevi",
+    "plain_conf": 0.33702799677848816,
+    "enc_pred": "melanocytic nevi",
+    "enc_conf": 0.34546688199043274,
+    "role": "safe",
+    "file_stem": "safe_melanocytic_nevi_test30"
+  },
+  {
+    "index": 436,
+    "label": "basal cell carcinoma",
+    "plain_pred": "basal cell carcinoma",
+    "plain_conf": 0.8474371433258057,
+    "enc_pred": "basal cell carcinoma",
+    "enc_conf": 0.8277044892311096,
+    "role": "safe",
+    "file_stem": "safe_basal_cell_carcinoma_test436"
+  },
+  {
+    "index": 1214,
+    "label": "basal cell carcinoma",
+    "plain_pred": "basal cell carcinoma",
+    "plain_conf": 0.4062170088291168,
+    "enc_pred": "actinic keratoses and intraepithelial carcinoma",
+    "enc_conf": 0.8513802886009216,
+    "role": "failure",
+    "file_stem": "failure_basal_cell_carcinoma_test1214"
+  }
+]

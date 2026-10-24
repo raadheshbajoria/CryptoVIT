@@ -20,6 +20,7 @@ dependencies = [
     "rich>=13.0",
     "einops>=0.7",
     "pyyaml>=6.0",
+    "medmnist>=3.0",
 ]
 
 [project.optional-dependencies]
