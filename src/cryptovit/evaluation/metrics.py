@@ -45,6 +45,7 @@ def evaluate_model(
     use_amp: bool = False,
     class_names: Optional[List[str]] = None,
     num_classes: Optional[int] = None,
+    key_embedding: Optional[torch.Tensor] = None,
 ) -> Dict:
     """Run inference on ``loader`` and compute comprehensive metrics.
 
@@ -61,7 +62,12 @@ def evaluate_model(
     class_names:
         Optional list of class name strings (for labelled confusion matrix).
     num_classes:
-        Number of output classes (inferred from data if None).
+        Number of output classes. When given, per-class metrics and the
+        confusion matrix always have this many entries, even if a class is
+        missing from the labels or predictions. Inferred from data if None.
+    key_embedding:
+        Optional ``(1, key_embed_dim)`` tensor passed to the model as
+        ``key_embedding=`` (for models with a key-aware positional encoding).
 
     Returns
     -------
@@ -72,6 +78,8 @@ def evaluate_model(
     """
     model.eval()
     model.to(device)
+    if key_embedding is not None:
+        key_embedding = key_embedding.to(device)
 
     all_preds: List[int] = []
     all_labels: List[int] = []
@@ -89,7 +97,10 @@ def evaluate_model(
             labels = labels.to(device, non_blocking=True)
 
             with torch.amp.autocast(device_type=device.type, enabled=use_amp):
-                logits = model(images)
+                if key_embedding is None:
+                    logits = model(images)
+                else:
+                    logits = model(images, key_embedding=key_embedding)
 
             preds = logits.argmax(dim=1)
             all_preds.extend(preds.cpu().tolist())
@@ -104,15 +115,18 @@ def evaluate_model(
     y_pred = np.array(all_preds)
 
     accuracy = float(accuracy_score(y_true, y_pred))
-    precision_macro = float(precision_score(y_true, y_pred, average="macro", zero_division=0))
-    recall_macro    = float(recall_score(y_true, y_pred, average="macro", zero_division=0))
-    f1_macro        = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
+    # Fix the label set so every per-class list has num_classes entries in
+    # class-index order, regardless of which classes appear in this split.
+    labels = np.arange(num_classes) if num_classes else None
+    precision_macro = float(precision_score(y_true, y_pred, labels=labels, average="macro", zero_division=0))
+    recall_macro    = float(recall_score(y_true, y_pred, labels=labels, average="macro", zero_division=0))
+    f1_macro        = float(f1_score(y_true, y_pred, labels=labels, average="macro", zero_division=0))
 
-    precision_per  = precision_score(y_true, y_pred, average=None, zero_division=0).tolist()
-    recall_per     = recall_score(y_true, y_pred, average=None, zero_division=0).tolist()
-    f1_per         = f1_score(y_true, y_pred, average=None, zero_division=0).tolist()
+    precision_per  = precision_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
+    recall_per     = recall_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
+    f1_per         = f1_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
 
-    cm = confusion_matrix(y_true, y_pred).tolist()
+    cm = confusion_matrix(y_true, y_pred, labels=labels).tolist()
 
     # --- Hardware ---
     peak_mem_mb = 0.0

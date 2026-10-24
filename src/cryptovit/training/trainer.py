@@ -144,6 +144,11 @@ class Trainer:
         torch.device to run on.
     experiment_dir:
         Root directory for checkpoints and logs.
+    key_embedding:
+        Optional ``(1, key_embed_dim)`` tensor passed to the model as
+        ``key_embedding=`` on every forward pass (training and validation).
+        Only models with a key-aware positional encoding accept it; leave
+        ``None`` for every other model.
     """
 
     def __init__(
@@ -152,11 +157,15 @@ class Trainer:
         cfg: DictConfig,
         device: torch.device,
         experiment_dir: Path,
+        key_embedding: Optional[torch.Tensor] = None,
     ):
         self.model = model.to(device)
         self.cfg = cfg
         self.device = device
         self.experiment_dir = Path(experiment_dir)
+        self.key_embedding = (
+            key_embedding.to(device) if key_embedding is not None else None
+        )
 
         t = cfg.training
         self.epochs: int = t.epochs
@@ -321,6 +330,12 @@ class Trainer:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _forward(self, images: torch.Tensor) -> torch.Tensor:
+        """Run the model, supplying the key embedding when one is configured."""
+        if self.key_embedding is None:
+            return self.model(images)
+        return self.model(images, key_embedding=self.key_embedding)
+
     def _train_epoch(
         self, loader: DataLoader, epoch: int
     ) -> Tuple[float, float]:
@@ -340,7 +355,7 @@ class Trainer:
             labels = labels.to(self.device, non_blocking=True)
 
             with autocast(self.device.type, enabled=self.use_amp):
-                logits = self.model(images)
+                logits = self._forward(images)
                 loss = self.criterion(logits, labels)
                 loss = loss / self.accum_steps
 
@@ -391,7 +406,7 @@ class Trainer:
             labels = labels.to(self.device, non_blocking=True)
 
             with autocast(self.device.type, enabled=self.use_amp):
-                logits = self.model(images)
+                logits = self._forward(images)
                 loss = self.criterion(logits, labels)
 
             total_loss += loss.item() * labels.size(0)
