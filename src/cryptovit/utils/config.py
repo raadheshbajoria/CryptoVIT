@@ -53,6 +53,16 @@ def load_config(
     if not base_path.exists():
         raise FileNotFoundError(f"Base config not found: {base_path}")
 
+    # `config=<name>` on the command line selects an extra YAML in configs/
+    # (e.g. `config=dermamnist` merges configs/dermamnist.yaml). It is applied
+    # before the other dotted overrides so those still win.
+    overrides = list(overrides or [])
+    cli_configs = [o.split("=", 1)[1] for o in overrides if o.startswith("config=")]
+    overrides = [o for o in overrides if not o.startswith("config=")]
+    extra_files = list(extra_files or []) + [
+        c if c.endswith((".yaml", ".yml")) else f"{c}.yaml" for c in cli_configs
+    ]
+
     cfg: DictConfig = OmegaConf.load(base_path)
     logger.debug("Loaded base config: %s", base_path)
 
@@ -79,13 +89,19 @@ def load_config(
 
 def _validate_config(cfg: DictConfig) -> None:
     """Run basic sanity checks on the merged configuration."""
-    allowed_datasets = {"cifar10", "cifar100"}
+    num_classes_map = {
+        "cifar10": 10, "cifar100": 100,
+        # MedMNIST single-label classification datasets
+        "dermamnist": 7, "pathmnist": 9, "bloodmnist": 8,
+        "pneumoniamnist": 2, "octmnist": 4,
+    }
+    allowed_datasets = set(num_classes_map)
     if cfg.dataset.name not in allowed_datasets:
         raise ValueError(
-            f"dataset.name must be one of {allowed_datasets}, got '{cfg.dataset.name}'"
+            f"dataset.name must be one of {sorted(allowed_datasets)}, "
+            f"got '{cfg.dataset.name}'"
         )
 
-    num_classes_map = {"cifar10": 10, "cifar100": 100}
     expected = num_classes_map[cfg.dataset.name]
     if cfg.dataset.num_classes != expected:
         raise ValueError(

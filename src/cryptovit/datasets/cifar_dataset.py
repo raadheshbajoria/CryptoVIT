@@ -213,6 +213,15 @@ def get_dataloaders(
     (train_loader, val_loader, test_loader)
     """
     dataset_name: str = cfg.dataset.name
+
+    from cryptovit.datasets.medmnist_dataset import (
+        get_medmnist_dataloaders,
+        is_medmnist,
+    )
+    if is_medmnist(dataset_name):
+        # MedMNIST ships official train/val/test splits; no random re-split.
+        return get_medmnist_dataloaders(cfg, data_root, download, seed)
+
     batch_train: int = cfg.training.batch_size
     batch_eval: int = cfg.evaluation.batch_size
     num_workers: int = cfg.dataset.num_workers
@@ -331,7 +340,13 @@ def compute_dataset_stats(
 
 
 def get_class_names(dataset_name: str) -> List[str]:
-    """Return ordered class names for CIFAR-10 or CIFAR-100."""
+    """Return ordered class names for CIFAR-10, CIFAR-100 or a MedMNIST dataset."""
+    from cryptovit.datasets.medmnist_dataset import (
+        is_medmnist,
+        medmnist_class_names,
+    )
+    if is_medmnist(dataset_name):
+        return medmnist_class_names(dataset_name)
     if dataset_name == "cifar10":
         return [
             "airplane", "automobile", "bird", "cat", "deer",
