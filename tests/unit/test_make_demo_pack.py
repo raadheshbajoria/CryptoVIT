@@ -59,6 +59,18 @@ def test_failure_is_plaintext_right_encrypted_wrong_most_confident_mistake():
                              ["melanoma"])["failure"] is None
 
 
+def test_demo_filenames_sort_safe_images_first_and_failure_last():
+    mod = _load()
+    names = [
+        mod.demo_filename("safe_melanoma_test1", "safe", 1),
+        mod.demo_filename("safe_nevi_test2", "safe", 2),
+        mod.demo_filename("safe_bcc_test3", "safe", 3),
+        mod.demo_filename("failure_bcc_test4", "failure", 4),
+    ]
+    assert names[-1].startswith("9_failure")
+    assert sorted(names) == names                     # the dropdown sorts alphabetically
+
+
 def test_slug():
     assert _load().slug("Basal cell carcinoma!") == "basal_cell_carcinoma"
     assert _load().slug("melanocytic nevi") == "melanocytic_nevi"

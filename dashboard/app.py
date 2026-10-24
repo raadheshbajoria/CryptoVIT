@@ -262,7 +262,7 @@ if img_bytes is not None:
                     restored = _bytes_to_pil(dec.content).convert("RGB")
                     st.image(restored.resize((256, 256), Image.NEAREST),
                              caption="Decrypted with the correct key", width="stretch")
-                    if list(restored.getdata()) == list(reference.getdata()):
+                    if restored.tobytes() == reference.tobytes():
                         st.success("Exactly identical to the original image.")
                     else:
                         st.warning("Not identical to the original (is the key the one used to encrypt?).")

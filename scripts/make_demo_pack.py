@@ -78,6 +78,16 @@ def choose_images(records: Sequence[Dict], classes: Sequence[str],
     return {"safe": chosen, "failure": failure}
 
 
+def demo_filename(stem: str, role: str, position: int) -> str:
+    """File name for the dashboard dropdown, which lists files alphabetically.
+
+    Safe images get 1_, 2_, 3_ ... so they come first; the honest failure gets 9_
+    so it is last and nobody picks it by accident at the start of a demo.
+    """
+    prefix = 9 if role == "failure" else position
+    return f"{prefix}_{stem}.png"
+
+
 def enlarge(img: Image.Image, scale: int = 8) -> Image.Image:
     """Nearest-neighbour enlargement so tiny images stay crisp on a projector."""
     return img.resize((img.width * scale, img.height * scale), Image.NEAREST)
@@ -126,7 +136,7 @@ def score_images(service, test_ds, class_names: Sequence[str], classes: Sequence
 
 
 def write_pack(rec: Dict, role: str, test_ds, key: str, block: int, out_dir: Path,
-               demo_dir: Optional[Path]) -> Dict:
+               demo_dir: Optional[Path], position: int = 1) -> Dict:
     """Write the originals and the enlarged pictures for one selected image."""
     from cryptovit.encryption import encrypt
 
@@ -150,7 +160,7 @@ def write_pack(rec: Dict, role: str, test_ds, key: str, block: int, out_dir: Pat
     strip.save(out_dir / f"{stem}_side_by_side.png")
     if demo_dir is not None:
         demo_dir.mkdir(parents=True, exist_ok=True)
-        Image.fromarray(arr).save(demo_dir / f"{stem}.png")
+        Image.fromarray(arr).save(demo_dir / demo_filename(stem, role, position))
     return {**rec, "role": role, "file_stem": stem}
 
 
@@ -234,8 +244,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             for pattern in patterns:
                 for old in folder.glob(pattern) if folder.is_dir() else []:
                     old.unlink()
-    rows = [write_pack(r, "safe", test_ds, args.key, args.block, out_dir, demo_dir)
-            for r in picked["safe"].values()]
+    rows = [write_pack(r, "safe", test_ds, args.key, args.block, out_dir, demo_dir, position=i)
+            for i, r in enumerate(picked["safe"].values(), start=1)]
     if picked["failure"]:
         rows.append(write_pack(picked["failure"], "failure", test_ds, args.key, args.block,
                                out_dir, demo_dir))
