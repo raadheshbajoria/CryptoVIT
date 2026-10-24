@@ -58,3 +58,12 @@ Everything listed here was actually done; numbers are copied from real command o
 | 00:54 | Variant A (plain ViT, plaintext) finished: early stopping after 20 epochs without improvement. Held-out test (2,005 images, used once): accuracy 52.2%, balanced accuracy 53.3%, macro AUC 0.788. Variant B started; at epoch 6/60 its validation balanced accuracy was 14.2% (chance for 7 classes is 14.3%) - early, still in warm-up. |
 | 01:01 | Dashboard simplified on your request: removed the university line, the Dataset/Device/Trained models/Classes row and the footer. The per-class chart is now **horizontal** (class names on the y axis, horizontal axis labels, percentage in each label, sorted by value, melanoma in orange) so nothing needs tilting to read. Checked visually in the browser pane; tests updated (5 dashboard tests). |
 
+
+## Part 4 - Block-wise encryption (Option 2)
+
+| Time | What happened |
+|---|---|
+| 01:10 | Observation: variant B (plain ViT on encrypted images, per-pixel scheme) reached only about 22% validation balanced accuracy (chance 14.3%) against 53% for plaintext. You chose Option 2: add a **block-wise "learnable" scheme**. |
+| 01:15 | Wrote `src/cryptovit/encryption/block_scheme.py` as a **new file** (plus 18 tests) so the encryption modules used by the running training were not touched. Scheme `block<B>` (e.g. `block2`): channel permutation, optional per-block inversion (255 - v) by key bit, one key-derived pixel shuffle inside every block, and a shuffle of the block positions. All steps are bijections (exact decryption). With B=2 on 28x28 images enlarged to 224, a block is exactly one 16x16 ViT patch (196 blocks = 196 patches). **Limits stated plainly:** no diffusion (one changed pixel changes one output pixel), pixel-value histogram preserved up to the inversion, same scrambling for every image under one key. It gives visual protection, not cryptographic strength, and trades security for classifiability. |
+| next | After the current run ends: hook `block<B>` into `encrypt()/decrypt()` (the scheme name carries the block size, so config, datasets, API and dashboard need no new parameters), then train variants on `encryption.scheme=block2` and compare with the per-pixel results. |
+
