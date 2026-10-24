@@ -151,9 +151,13 @@ def _get_loaders(variant: str, cfg, data_root: Path):
 
 
 def run_variant(
-    variant: str, cfg, device: torch.device, exp_dir: Path
+    variant: str, cfg, device: torch.device, exp_dir: Path, loaders=None
 ) -> dict:
-    """Train and evaluate one ablation variant."""
+    """Train and evaluate one ablation variant.
+
+    ``loaders`` is an optional pre-built ``(train, val, test)`` tuple (used by
+    tests with synthetic data); by default the real CIFAR loaders are built.
+    """
     logger.info("\n%s\nVariant %s\n%s", "="*50, variant, "="*50)
     cfg = _variant_cfg(variant, cfg)
     logger.info(
@@ -163,8 +167,10 @@ def run_variant(
     )
     set_seed(cfg.project.seed)
 
-    data_root = PROJECT_ROOT / cfg.paths.raw_dir
-    train_l, val_l, test_l = _get_loaders(variant, cfg, data_root)
+    if loaders is None:
+        data_root = PROJECT_ROOT / cfg.paths.raw_dir
+        loaders = _get_loaders(variant, cfg, data_root)
+    train_l, val_l, test_l = loaders
     model = _build_variant(variant, cfg, device)
 
     # Variant D is trained and evaluated with the key embedding of the
