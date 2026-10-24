@@ -22,6 +22,7 @@ Or with API backend:
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import requests
 import streamlit as st
@@ -33,22 +34,28 @@ from PIL import Image
 
 st.set_page_config(
     page_title="CryptoViT Demo",
-    page_icon="🔐",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 API_URL = "http://127.0.0.1:8000"
 
+# Public research key the shipped models were trained with. Encrypted-image
+# models only work with this key; anything else shows what the key does.
+DEFAULT_KEY = "CryptoViT_Research_Key_2025"
+
+# Pre-selected test images for the live demo (PNG files), if the folder exists.
+DEMO_DIR = Path(__file__).resolve().parents[1] / "demo_images"
+
 # -------------------------------------------------------------------------
-# Sidebar — configuration
+# Sidebar - configuration
 # -------------------------------------------------------------------------
 
-st.sidebar.title("🔐 CryptoViT")
+st.sidebar.title("CryptoViT")
 st.sidebar.markdown(
     "**Chaos-Assisted Vision Transformer**\n\n"
     "Privacy-Preserving Image Classification\n\n"
-    "*VIT Bhopal University — B.Tech ECE+AI/Cybernetics*"
+    "*VIT Bhopal University - B.Tech ECE+AI/Cybernetics*"
 )
 st.sidebar.divider()
 
@@ -58,8 +65,35 @@ api_url = st.sidebar.text_input(
     help="URL of the CryptoViT FastAPI backend.",
 )
 
+st.sidebar.divider()
+key = st.sidebar.text_input(
+    "Encryption key",
+    value=DEFAULT_KEY,
+    help="Used to encrypt the image. The encrypted-image models were trained "
+         "with the default key only.",
+)
+wrong_key = st.sidebar.text_input(
+    "Wrong key (for the failure demo)",
+    value="wrong_key",
+    help="Used by the 'wrong key' buttons below.",
+)
+
+demo_files = sorted(DEMO_DIR.glob("*.png")) if DEMO_DIR.is_dir() else []
+demo_choice = None
+if demo_files:
+    demo_choice = st.sidebar.selectbox(
+        "Demo image",
+        options=[None] + demo_files,
+        format_func=lambda p: "- none (upload below) -" if p is None else p.stem,
+        help="Pre-selected test images from the dataset.",
+    )
+
+st.sidebar.divider()
 show_security = st.sidebar.checkbox("Show security metrics", value=True)
-show_comparison = st.sidebar.checkbox("Show baseline comparison", value=True)
+show_comparison = st.sidebar.checkbox("Show model comparison", value=True)
+show_wrong_key_predictions = st.sidebar.checkbox(
+    "Also classify with the wrong key", value=False
+)
 
 # -------------------------------------------------------------------------
 # Helpers
@@ -81,8 +115,10 @@ def _api_get(endpoint: str):
         r.raise_for_status()
         return r
     except requests.exceptions.ConnectionError:
-        st.error("❌ Cannot connect to API. Is the server running?")
+        st.error("Cannot connect to API. Is the server running?")
         return None
+    except requests.exceptions.HTTPError:
+        return None   # e.g. 404 before any metrics/results exist
 
 
 def _api_post_image(endpoint: str, img_bytes: bytes, **kwargs):
@@ -96,7 +132,7 @@ def _api_post_image(endpoint: str, img_bytes: bytes, **kwargs):
         r.raise_for_status()
         return r
     except requests.exceptions.ConnectionError:
-        st.error("❌ Cannot connect to API.")
+        st.error("Cannot connect to API.")
         return None
     except requests.exceptions.HTTPError as e:
         st.error(f"API error: {e.response.text}")
@@ -107,31 +143,55 @@ def _api_post_image(endpoint: str, img_bytes: bytes, **kwargs):
 # Main UI
 # -------------------------------------------------------------------------
 
-st.title("🔐 CryptoViT — Privacy-Preserving Image Classification")
+st.title("CryptoViT - Privacy-Preserving Medical Image Classification")
 st.markdown(
-    "Upload an image to see it encrypted and classified by the "
-    "**Chaos-Assisted Vision Transformer** pipeline."
+    "The image is **scrambled with a secret key** and then classified by a "
+    "Vision Transformer **without ever being decrypted**."
+)
+st.warning(
+    "Research prototype for a student project. **Not a medical device and not "
+    "for clinical use.** Do not upload real patient images.",
 )
 
 # Check API health
+class_names: list = []
+native_size = 32
 health_resp = _api_get("/health")
 if health_resp:
     h = health_resp.json()
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Device", h.get("device", "unknown"))
-    col2.metric("Baseline ViT", "✅ Loaded" if h["baseline_loaded"] else "⚠️ Not loaded")
-    col3.metric("CryptoViT", "✅ Loaded" if h["cryptovit_loaded"] else "⚠️ Not loaded")
+    class_names = h.get("class_names", [])
+    native_size = h.get("image_size", 32)
+    variants = h.get("variants", {})
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Dataset", h.get("dataset", "unknown"))
+    col2.metric("Device", h.get("device", "unknown"))
+    n_trained = sum(1 for v in variants.values() if v.get("trained"))
+    col3.metric("Trained models", f"{n_trained} / {len(variants) or 4}")
+    col4.metric("Classes", len(class_names))
+    if class_names:
+        st.caption("Classes: " + ", ".join(class_names))
+    if n_trained < len(variants):
+        st.info(
+            "Some models are not trained (yet). An untrained model gives "
+            "meaningless predictions; trained ones are marked yes in the table."
+        )
     st.divider()
 
-# File upload
+# Image source: sidebar demo image, otherwise an upload
 uploaded = st.file_uploader(
-    "Upload an image (JPEG / PNG)",
+    f"Upload an image (JPEG / PNG) - it is reduced to {native_size}x{native_size} px",
     type=["jpg", "jpeg", "png"],
-    help="Small images (32×32) are best. Larger images will be resized to 32×32 for CIFAR-scale demo.",
+    help="The models only know this dataset's image type. Photos of other "
+         "things will get a meaningless answer.",
 )
 
-if uploaded is not None:
+img_bytes = None
+if demo_choice is not None:
+    img_bytes = demo_choice.read_bytes()
+elif uploaded is not None:
     img_bytes = uploaded.read()
+
+if img_bytes is not None:
     orig_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
     # ------------------------------------------------------------------ #
@@ -140,23 +200,25 @@ if uploaded is not None:
     col_orig, col_enc, col_pred = st.columns(3)
 
     with col_orig:
-        st.subheader("1️⃣ Original Image")
-        st.image(orig_pil, caption="Plaintext input", use_container_width=True)
-        st.caption(f"Size: {orig_pil.size[0]}×{orig_pil.size[1]} px")
+        st.subheader("1. Original Image")
+        shown = orig_pil.resize((256, 256), Image.NEAREST) if max(orig_pil.size) <= 64 else orig_pil
+        st.image(shown, caption="Plaintext input (enlarged for display)", width="stretch")
+        st.caption(f"Size: {orig_pil.size[0]}x{orig_pil.size[1]} px")
 
     # ------------------------------------------------------------------ #
     # Step 2: Encrypt                                                     #
     # ------------------------------------------------------------------ #
     with col_enc:
-        st.subheader("2️⃣ Encrypted Image")
-        with st.spinner("Encrypting…"):
-            enc_resp = _api_post_image("/encrypt", _pil_to_bytes(orig_pil))
+        st.subheader("2. Encrypted Image")
+        with st.spinner("Encrypting..."):
+            enc_resp = _api_post_image("/encrypt", _pil_to_bytes(orig_pil), key=key)
 
         if enc_resp:
             enc_pil = _bytes_to_pil(enc_resp.content)
             key_hash = enc_resp.headers.get("X-Encryption-KeyHash", "unknown")
-            st.image(enc_pil, caption="Encrypted representation", use_container_width=True)
-            st.caption(f"Key hash: `{key_hash[:16]}…`")
+            shown_enc = enc_pil.resize((256, 256), Image.NEAREST) if max(enc_pil.size) <= 64 else enc_pil
+            st.image(shown_enc, caption="Encrypted representation", width="stretch")
+            st.caption(f"Key hash: `{key_hash[:16]}...`")
             st.download_button(
                 "Download encrypted image",
                 data=enc_resp.content,
@@ -167,35 +229,72 @@ if uploaded is not None:
             enc_pil = None
 
     # ------------------------------------------------------------------ #
-    # Step 3: Classify encrypted with CryptoViT                          #
+    # Step 3: Classify the encrypted image (no decryption)                #
     # ------------------------------------------------------------------ #
+    cmp_data = None
     with col_pred:
-        st.subheader("3️⃣ CryptoViT Prediction")
+        st.subheader("3. Prediction on the encrypted image")
         if enc_pil is not None:
-            with st.spinner("Classifying encrypted image…"):
-                pred_resp = _api_post_image(
-                    "/predict", _pil_to_bytes(orig_pil),
-                    encrypt_first="true",
-                )
-            if pred_resp:
-                p = pred_resp.json()
-                st.metric(
-                    label="Predicted Class",
-                    value=p["class_name"].upper(),
-                    delta=f"Confidence: {p['confidence']*100:.1f}%",
-                )
-                st.markdown("**Top-5 predictions:**")
-                for item in p.get("top5", []):
-                    prob_pct = item["prob"] * 100
-                    st.progress(int(prob_pct), text=f"{item['class']}: {prob_pct:.1f}%")
+            with st.spinner("Classifying encrypted image..."):
+                cmp_resp = _api_post_image("/compare", _pil_to_bytes(orig_pil), key=key)
+            if cmp_resp:
+                cmp_data = cmp_resp.json()
+                encrypted_preds = cmp_data.get("encrypted", {})
+                # Show the CryptoViT (D) result if available, otherwise the best other
+                main = (encrypted_preds.get("D") or encrypted_preds.get("C")
+                        or encrypted_preds.get("B"))
+                if main:
+                    st.caption(main["model"])
+                    st.metric(
+                        label="Predicted Class",
+                        value=main["class_name"].upper(),
+                        delta=f"Confidence: {main['confidence']*100:.1f}%",
+                    )
+                    st.markdown("**Top predictions:**")
+                    for item in main.get("top5", []):
+                        prob_pct = item["prob"] * 100
+                        st.progress(int(prob_pct), text=f"{item['class']}: {prob_pct:.1f}%")
 
     st.divider()
+
+    # ------------------------------------------------------------------ #
+    # What the key does: decrypt with the right and a wrong key           #
+    # ------------------------------------------------------------------ #
+    if enc_resp:
+        st.subheader("What the key does")
+        st.caption(
+            "Decryption is only possible with the key used to encrypt. With a "
+            "wrong key the result is noise, not an error."
+        )
+        k1, k2 = st.columns(2)
+        reference = orig_pil.resize((native_size, native_size), Image.LANCZOS).convert("RGB")
+
+        with k1:
+            if st.button("Decrypt with the correct key", width="stretch"):
+                dec = _api_post_image("/decrypt", enc_resp.content, key=key)
+                if dec:
+                    restored = _bytes_to_pil(dec.content).convert("RGB")
+                    st.image(restored.resize((256, 256), Image.NEAREST),
+                             caption="Decrypted with the correct key", width="stretch")
+                    if list(restored.getdata()) == list(reference.getdata()):
+                        st.success("Exactly identical to the original image.")
+                    else:
+                        st.warning("Not identical to the original (is the key the one used to encrypt?).")
+        with k2:
+            if st.button("Decrypt with a wrong key", width="stretch"):
+                dec = _api_post_image("/decrypt", enc_resp.content, key=wrong_key)
+                if dec:
+                    st.image(_bytes_to_pil(dec.content).resize((256, 256), Image.NEAREST),
+                             caption=f"Decrypted with the wrong key '{wrong_key}'",
+                             width="stretch")
+                    st.error("The image is not recovered - only noise.")
+        st.divider()
 
     # ------------------------------------------------------------------ #
     # Security metrics panel                                              #
     # ------------------------------------------------------------------ #
     if show_security:
-        st.subheader("🔒 Security Metrics")
+        st.subheader("Security Metrics")
         metrics_resp = _api_get("/metrics")
         if metrics_resp:
             m = metrics_resp.json()
@@ -228,7 +327,7 @@ if uploaded is not None:
             mc4.metric(
                 "H.Correlation",
                 f"{corr.get('horizontal', 0):.4f}",
-                help="Target: ≈ 0",
+                help="Target: about 0",
             )
 
             ks = m.get("key_sensitivity")
@@ -248,25 +347,104 @@ if uploaded is not None:
     # ------------------------------------------------------------------ #
     # Baseline comparison                                                 #
     # ------------------------------------------------------------------ #
-    if show_comparison:
-        st.subheader("📊 Baseline Comparison")
-        with st.spinner("Classifying plaintext with baseline ViT…"):
-            base_resp = _api_post_image("/predict_plaintext", _pil_to_bytes(orig_pil))
+    def _comparison_rows(data: dict) -> list:
+        """Table rows: the plaintext model first, then the encrypted-image models."""
+        rows = []
+        plain = data.get("plaintext")
+        if plain:
+            rows.append(("A", plain, "plaintext image"))
+        for variant in ("B", "C", "D"):
+            if variant in data.get("encrypted", {}):
+                rows.append((variant, data["encrypted"][variant], "encrypted image"))
+        return [
+            {
+                "Variant": v,
+                "Model": p["model"],
+                "Sees": sees,
+                "Prediction": p["class_name"],
+                "Confidence": f"{p['confidence'] * 100:.1f}%",
+                "Trained": "yes" if p.get("trained") else "untrained",
+            }
+            for v, p, sees in rows
+        ]
 
-        if base_resp and enc_pil is not None:
-            b = base_resp.json()
-            st.markdown(f"**Baseline ViT (plaintext):** {b['class_name'].upper()} ({b['confidence']*100:.1f}%)")
-            if 'pred_resp' in locals() and pred_resp is not None:
-                p = pred_resp.json()
-                st.markdown(f"**CryptoViT (encrypted):** {p['class_name'].upper()} ({p['confidence']*100:.1f}%)")
-                agree = b["class_name"] == p["class_name"]
-                if agree:
-                    st.success("✅ Both models agree on the predicted class.")
-                else:
-                    st.warning("⚠️ Models disagree — this is expected when CryptoViT is not fully trained.")
+    if show_comparison and cmp_data is not None:
+        st.subheader("Model comparison")
+        st.caption(
+            "Variant A sees the plaintext image. B, C and D only ever see the "
+            f"encrypted image (key: '{key}')."
+        )
+        st.dataframe(_comparison_rows(cmp_data), hide_index=True, width="stretch")
+
+        preds = [r["Prediction"] for r in _comparison_rows(cmp_data) if r["Trained"] == "yes"]
+        if len(preds) >= 2:
+            if len(set(preds)) == 1:
+                st.success("All trained models agree on this image.")
+            else:
+                st.warning("The trained models disagree on this image.")
+
+        if show_wrong_key_predictions:
+            wk_resp = _api_post_image("/compare", _pil_to_bytes(orig_pil), key=wrong_key)
+            if wk_resp:
+                st.markdown(f"**Same image encrypted with the wrong key '{wrong_key}':**")
+                wk_rows = [r for r in _comparison_rows(wk_resp.json()) if r["Sees"] == "encrypted image"]
+                st.dataframe(wk_rows, hide_index=True, width="stretch")
+                st.caption(
+                    "The encrypted-image models were trained on images scrambled "
+                    "with the correct key, so their answers on other scrambles are unreliable."
+                )
 
 else:
-    st.info("👆 Upload an image to get started.")
+    st.info("Pick a demo image in the sidebar or upload an image to get started.")
+
+# -------------------------------------------------------------------------
+# Test results of the trained models (shown once the training run has finished)
+# -------------------------------------------------------------------------
+
+st.divider()
+st.subheader("Test results of the trained models")
+results_resp = _api_get("/results")
+if results_resp is None:
+    st.info("Results appear here once the training run has finished.")
+else:
+    results = results_resp.json()
+    melanoma_idx = class_names.index("melanoma") if "melanoma" in class_names else None
+
+    def _fmt(value, pct=False):
+        if value is None:
+            return "n/a"
+        return f"{value * 100:.1f}%" if pct else f"{value:.3f}"
+
+    table = []
+    for r in results:
+        sens = r.get("per_class_sensitivity") or []
+        row = {
+            "Variant": r["variant"],
+            "Model": r["label"],
+            "Balanced accuracy": _fmt(r.get("balanced_accuracy"), pct=True),
+            "Accuracy": _fmt(r.get("accuracy"), pct=True),
+            "Macro AUC": _fmt(r.get("auc_macro_ovr")),
+        }
+        if melanoma_idx is not None and melanoma_idx < len(sens):
+            row["Melanoma sensitivity"] = _fmt(sens[melanoma_idx], pct=True)
+        row["Epochs"] = r.get("epochs_trained", "?")
+        table.append(row)
+    st.dataframe(table, hide_index=True, width="stretch")
+    n_test = results[0].get("num_samples")
+    st.caption(
+        f"Measured once on the held-out test set ({n_test} images) after training. "
+        "Balanced accuracy is the mean of the per-class sensitivities, so a model "
+        "that only guesses the most common class scores low."
+    )
+
+    chosen = st.selectbox(
+        "Per-class sensitivity of", [r["variant"] for r in results],
+        format_func=lambda v: next(f"{r['variant']} - {r['label']}" for r in results if r["variant"] == v),
+    )
+    sel = next(r for r in results if r["variant"] == chosen)
+    sens = sel.get("per_class_sensitivity") or []
+    if sens and class_names:
+        st.bar_chart({"sensitivity": {n: s for n, s in zip(class_names, sens)}})
 
 # -------------------------------------------------------------------------
 # Footer
@@ -274,7 +452,8 @@ else:
 
 st.divider()
 st.markdown(
-    "<small>CryptoViT — Final Year B.Tech Capstone | VIT Bhopal University | "
-    "ECE + AI/Cybernetics</small>",
+    "<small>CryptoViT - Final Year B.Tech Capstone | VIT Bhopal University | "
+    "ECE + AI/Cybernetics. Research prototype; not a medical device; not for "
+    "clinical use.</small>",
     unsafe_allow_html=True,
 )
