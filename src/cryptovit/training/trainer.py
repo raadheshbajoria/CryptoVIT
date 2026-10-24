@@ -256,6 +256,7 @@ class Trainer:
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
+        resume: bool = False,
     ) -> Dict[str, List[float]]:
         """Run the complete training loop.
 
@@ -265,6 +266,12 @@ class Trainer:
             DataLoader for the training set.
         val_loader:
             DataLoader for the validation set.
+        resume:
+            If True and ``checkpoints/last.pt`` exists in the experiment
+            directory, continue from the epoch after the one it holds
+            (model, optimiser, LR schedule, AMP scaler, history and
+            early-stopping state are restored). The data order of the
+            resumed epochs is not bit-identical to an uninterrupted run.
 
         Returns
         -------
@@ -291,7 +298,14 @@ class Trainer:
             self.epochs, steps_per_epoch, warmup_steps,
         )
 
-        for epoch in range(1, self.epochs + 1):
+        start_epoch, finished = 1, False
+        if resume:
+            start_epoch, finished = self._load_last()
+        if finished:
+            logger.info("Checkpoint marks training as finished; nothing to do.")
+            start_epoch = self.epochs + 1
+
+        for epoch in range(start_epoch, self.epochs + 1):
             t0 = time.time()
             train_loss, train_acc = self._train_epoch(train_loader, epoch)
             val_loss, val_acc = self._val_epoch(val_loader)
@@ -336,7 +350,9 @@ class Trainer:
                 self.ckpt_manager.save_periodic(self.model, self.optimizer, epoch)
 
             # Early stopping
-            if self._no_improve >= self.patience:
+            stop = self._no_improve >= self.patience
+            self._save_last(epoch, finished=stop or epoch == self.epochs)
+            if stop:
                 logger.info(
                     "Early stopping triggered after %d epochs without improvement.",
                     self.patience,
@@ -351,6 +367,59 @@ class Trainer:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @property
+    def _last_path(self) -> Path:
+        return self.ckpt_manager.save_dir / "last.pt"
+
+    def _save_last(self, epoch: int, finished: bool) -> None:
+        """Write the full training state so an interrupted run can resume.
+
+        Written to a temporary file first and then renamed, so a crash while
+        saving never leaves a corrupt ``last.pt``.
+        """
+        state = {
+            "epoch": epoch,
+            "finished": finished,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "scheduler_state_dict": (
+                self.scheduler.state_dict() if self.scheduler is not None else None
+            ),
+            "scaler_state_dict": self.scaler.state_dict(),
+            "history": self.history,
+            "best_val_acc": self._best_val_acc,
+            "no_improve": self._no_improve,
+            "best_checkpoints": [
+                (acc, str(path)) for acc, path in self.ckpt_manager._best
+            ],
+        }
+        tmp = self._last_path.with_suffix(".tmp")
+        torch.save(state, tmp)
+        tmp.replace(self._last_path)
+
+    def _load_last(self) -> Tuple[int, bool]:
+        """Restore state from ``last.pt``; return ``(next_epoch, finished)``."""
+        if not self._last_path.exists():
+            logger.info("No resume checkpoint at %s; starting from epoch 1.", self._last_path)
+            return 1, False
+        state = torch.load(self._last_path, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(state["model_state_dict"])
+        self.optimizer.load_state_dict(state["optimizer_state_dict"])
+        if state.get("scheduler_state_dict") and self.scheduler is not None:
+            self.scheduler.load_state_dict(state["scheduler_state_dict"])
+        self.scaler.load_state_dict(state["scaler_state_dict"])
+        self.history = state["history"]
+        self._best_val_acc = state["best_val_acc"]
+        self._no_improve = state["no_improve"]
+        self.ckpt_manager._best = [
+            (acc, Path(p)) for acc, p in state["best_checkpoints"]
+        ]
+        logger.info(
+            "Resumed from %s: last completed epoch=%d  best_val_acc=%.4f",
+            self._last_path, state["epoch"], self._best_val_acc,
+        )
+        return state["epoch"] + 1, bool(state["finished"])
 
     def _forward(self, images: torch.Tensor) -> torch.Tensor:
         """Run the model, supplying the key embedding when one is configured."""

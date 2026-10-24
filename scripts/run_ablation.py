@@ -183,7 +183,8 @@ def run_variant(
     var_dir = exp_dir / f"variant_{variant}"
     trainer = Trainer(model, cfg, device, var_dir, key_embedding=key_embedding)
     t0 = time.time()
-    history = trainer.fit(train_l, val_l)
+    # resume=True continues an interrupted run from checkpoints/last.pt
+    history = trainer.fit(train_l, val_l, resume=True)
     train_time = time.time() - t0
 
     trainer.load_best_checkpoint()
@@ -209,11 +210,12 @@ def run_variant(
 def main() -> None:
     overrides = sys.argv[1:]
     cfg = load_config(overrides=overrides if overrides else None)
-    setup_logging(level=cfg.logging.level)
 
-    device = get_device(cfg)
     exp_dir = PROJECT_ROOT / cfg.paths.experiments_dir / "ablation"
     exp_dir.mkdir(parents=True, exist_ok=True)
+    setup_logging(level=cfg.logging.level, log_file=exp_dir / "run.log")
+
+    device = get_device(cfg)
 
     requested = str(OmegaConf.select(cfg, "ablation.variants", default=",".join(ALL_VARIANTS)))
     variants = [v.strip().upper() for v in requested.split(",") if v.strip()]
@@ -223,12 +225,27 @@ def main() -> None:
 
     all_results = {}
     for variant in variants:
-        try:
-            results = run_variant(variant, cfg, device, exp_dir)
-            all_results[variant] = results
-        except Exception as exc:
-            logger.error("Variant %s failed: %s", variant, exc, exc_info=True)
-            all_results[variant] = {"error": str(exc)}
+        result_path = exp_dir / f"result_{variant}.json"
+        if result_path.exists():
+            logger.info("Variant %s already finished; loading %s", variant, result_path)
+            all_results[variant] = json.loads(result_path.read_text())
+            continue
+
+        # One automatic retry: run_variant resumes from checkpoints/last.pt,
+        # so a transient failure costs at most one epoch.
+        for attempt in (1, 2):
+            try:
+                results = run_variant(variant, cfg, device, exp_dir)
+                result_path.write_text(json.dumps(results, indent=2))
+                all_results[variant] = results
+                break
+            except Exception as exc:
+                logger.error("Variant %s failed (attempt %d/2): %s",
+                             variant, attempt, exc, exc_info=True)
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
+                if attempt == 2:
+                    all_results[variant] = {"error": str(exc)}
 
     # Save combined results
     out_path = exp_dir / "ablation_results.json"
