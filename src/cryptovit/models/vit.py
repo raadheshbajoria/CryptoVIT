@@ -22,13 +22,10 @@ Usage
 from __future__ import annotations
 
 import logging
-import math
-from functools import partial
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange
 
 logger = logging.getLogger(__name__)

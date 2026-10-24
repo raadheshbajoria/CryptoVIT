@@ -72,8 +72,9 @@ def main() -> None:
     # 2. Set seed
     set_seed(cfg.project.seed)
 
-    # 3. Get device (informational only in Phase 1)
+    # 3. Get device
     device = get_device(cfg)
+    logger.info("Device  : %s", device)
 
     # 4. Build DataLoaders
     logger.info("Building DataLoaders …")
@@ -110,12 +111,10 @@ def main() -> None:
     # Build a temporary unnormalised eval loader for stat computation
     from cryptovit.datasets.cifar_dataset import (
         _TORCHVISION_CLS,
-        _get_stats,
         build_eval_transform,
     )
     from omegaconf import OmegaConf
     from torch.utils.data import DataLoader
-    from torchvision import transforms
 
     cfg_nonorm = OmegaConf.merge(
         cfg,

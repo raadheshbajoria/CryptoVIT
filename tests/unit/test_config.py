@@ -7,7 +7,7 @@ Unit tests for the configuration management system.
 from __future__ import annotations
 
 import pytest
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 
 class TestLoadConfig:

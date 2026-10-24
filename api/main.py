@@ -28,9 +28,9 @@ import io
 import json
 import logging
 import sys
-import time
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
@@ -38,28 +38,15 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 import numpy as np
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import JSONResponse, Response
 from PIL import Image
 
 from cryptovit.encryption import decrypt, encrypt
 from cryptovit.evaluation.security_metrics import compute_all_security_metrics
-from cryptovit.utils.config import load_config, get_device
+from cryptovit.utils.config import get_device, load_config
 from cryptovit.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# App initialisation
-# ---------------------------------------------------------------------------
-
-app = FastAPI(
-    title="CryptoViT API",
-    description=(
-        "Privacy-preserving image classification via chaos-assisted encryption "
-        "and Vision Transformer (CryptoViT)."
-    ),
-    version="0.1.0",
-)
 
 # Global state (loaded at startup)
 _cfg = None
@@ -76,8 +63,8 @@ CIFAR10_CLASSES = [
 ]
 
 
-@app.on_event("startup")
-async def load_models():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global _cfg, _device, _baseline_model, _cryptovit_model
 
     _cfg = load_config()
@@ -86,9 +73,21 @@ async def load_models():
 
     logger.info("CryptoViT API starting up on device: %s", _device)
 
-    # Try to load trained models from checkpoints
+    # Load models
     _baseline_model = _try_load_baseline()
     _cryptovit_model = _try_load_cryptovit()
+    yield
+
+
+app = FastAPI(
+    title="CryptoViT API",
+    description=(
+        "Privacy-preserving image classification via chaos-assisted encryption "
+        "and Vision Transformer (CryptoViT)."
+    ),
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 
 def _try_load_baseline():
@@ -101,7 +100,7 @@ def _try_load_baseline():
         ckpt_dirs = list(exp_dir.glob("baseline_*/checkpoints/*.pt"))
         if ckpt_dirs:
             ckpt = sorted(ckpt_dirs)[-1]  # take the latest
-            state = torch.load(ckpt, map_location=_device)
+            state = torch.load(ckpt, map_location=_device, weights_only=False)
             model.load_state_dict(state["model_state_dict"])
             model.eval()
             logger.info("Loaded baseline model from %s", ckpt)
@@ -117,7 +116,6 @@ def _try_load_baseline():
 
 def _try_load_cryptovit():
     """Attempt to load a trained CryptoViT checkpoint."""
-    from cryptovit.models.cryptovit import CryptoViT
     try:
         from omegaconf import OmegaConf
         cryptovit_cfg = OmegaConf.merge(
@@ -130,7 +128,7 @@ def _try_load_cryptovit():
         ckpt_dirs = list(exp_dir.glob("*cryptovit*/checkpoints/*.pt"))
         if ckpt_dirs:
             ckpt = sorted(ckpt_dirs)[-1]
-            state = torch.load(ckpt, map_location=_device)
+            state = torch.load(ckpt, map_location=_device, weights_only=False)
             model.load_state_dict(state["model_state_dict"])
             model.eval()
             logger.info("Loaded CryptoViT from %s", ckpt)

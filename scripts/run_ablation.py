@@ -34,14 +34,12 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 import torch
 import torch.nn as nn
-from omegaconf import OmegaConf
 
 from cryptovit.datasets import get_class_names, get_dataloaders
 from cryptovit.datasets.encrypted_dataset import EncryptedCIFARDataset
 from cryptovit.evaluation import evaluate_model, print_metrics_table
 from cryptovit.models.cryptovit import CryptoViT
-from cryptovit.models.patch_embedding import CryptoPatchEmbedding, StandardPatchEmbedding
-from cryptovit.models.positional_encoding import KeyAwarePositionalEncoding
+from cryptovit.models.patch_embedding import CryptoPatchEmbedding
 from cryptovit.models.vit import VisionTransformer
 from cryptovit.training import Trainer
 from cryptovit.utils.config import get_device, load_config
@@ -105,7 +103,7 @@ def _get_loaders(variant: str, cfg, data_root: Path):
 
     # Variants B–E: use encrypted dataset (online mode for now)
     # For full training, switch to precomputed mode after generating data
-    from torchvision import datasets, transforms
+    from torchvision import datasets
     from torch.utils.data import DataLoader
     from cryptovit.datasets import build_eval_transform, build_train_transform
 

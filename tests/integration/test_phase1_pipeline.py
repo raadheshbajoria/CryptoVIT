@@ -17,15 +17,8 @@ import sys
 from pathlib import Path
 
 import pytest
-import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-
-
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests (deselect with -m 'not integration')"
-    )
 
 
 @pytest.fixture(scope="module")

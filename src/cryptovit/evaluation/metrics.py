@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -32,7 +32,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from torch.cuda.amp import autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -89,7 +88,7 @@ def evaluate_model(
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
 
-            with autocast(enabled=use_amp):
+            with torch.amp.autocast(device_type=device.type, enabled=use_amp):
                 logits = model(images)
 
             preds = logits.argmax(dim=1)

@@ -33,6 +33,7 @@ Usage
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Dict, Tuple
 
@@ -71,8 +72,6 @@ def encrypt(
         ``shape``     — original image shape
         ``key_hash``  — SHA-256 of the key (for verification, not reconstruction)
     """
-    import hashlib
-
     if image.dtype != np.uint8:
         raise TypeError(f"Image must be uint8; got {image.dtype}.")
 

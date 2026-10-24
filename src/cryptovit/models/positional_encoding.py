@@ -221,7 +221,6 @@ class KeyAwarePositionalEncoding(nn.Module):
         """
         if isinstance(key, str):
             key = key.encode("utf-8")
-        import struct
         digest = hashlib.sha256(key).digest()   # 32 bytes
         # Repeat digest to fill embed_dim bytes
         n_repeats = math.ceil(embed_dim / 32)

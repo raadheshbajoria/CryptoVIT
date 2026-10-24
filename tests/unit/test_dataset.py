@@ -159,3 +159,56 @@ class TestComputeDatasetStats:
         mean, std = compute_dataset_stats(loader)
         assert len(mean) == 3
         assert len(std) == 3
+
+
+# -------------------------------------------------------------------------
+# EncryptedCIFARDataset
+# -------------------------------------------------------------------------
+
+class TestEncryptedCIFARDataset:
+    def test_online_mode(self):
+        from cryptovit.datasets import EncryptedCIFARDataset
+        from PIL import Image
+
+        class FakeBaseDataset:
+            def __len__(self):
+                return 4
+
+            def __getitem__(self, idx):
+                arr = np.random.randint(0, 256, (16, 16, 3), dtype=np.uint8)
+                return Image.fromarray(arr), idx % 2
+
+        base = FakeBaseDataset()
+        enc_ds = EncryptedCIFARDataset(base, key="test_key", mode="online", transient_steps=50)
+        assert len(enc_ds) == 4
+
+        tensor, label = enc_ds[0]
+        assert tensor.ndim == 3
+        assert tensor.dtype == torch.float32
+        assert label in (0, 1)
+
+    def test_precomputed_mode(self, tmp_path):
+        from cryptovit.datasets import EncryptedCIFARDataset
+
+        class FakeBaseDataset:
+            def __len__(self):
+                return 2
+
+            def __getitem__(self, idx):
+                return None, 0
+
+        images = np.random.randint(0, 256, (2, 16, 16, 3), dtype=np.uint8)
+        labels = np.array([0, 1], dtype=np.int64)
+        np.save(tmp_path / "images.npy", images)
+        np.save(tmp_path / "labels.npy", labels)
+
+        enc_ds = EncryptedCIFARDataset(
+            FakeBaseDataset(),
+            key="test_key",
+            mode="precomputed",
+            encrypted_dir=tmp_path,
+        )
+        assert len(enc_ds) == 2
+        tensor, label = enc_ds[1]
+        assert tensor.shape == (3, 16, 16)
+        assert label == 1

@@ -34,9 +34,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-import torch
-
-from cryptovit.datasets import get_dataloaders, get_class_names
+from cryptovit.datasets import get_class_names, get_dataloaders
 from cryptovit.evaluation import evaluate_model, print_metrics_table
 from cryptovit.models import build_model
 from cryptovit.training import Trainer

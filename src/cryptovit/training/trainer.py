@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
@@ -182,7 +182,8 @@ class Trainer:
         self.scheduler: Optional[LambdaLR] = None
 
         # AMP scaler
-        self.scaler = GradScaler(enabled=self.use_amp)
+        device_type = self.device.type if self.device.type in ("cuda", "cpu") else "cuda"
+        self.scaler = GradScaler(device_type, enabled=self.use_amp)
 
         # Checkpoint manager
         ckpt_dir = self.experiment_dir / "checkpoints"
@@ -329,7 +330,7 @@ class Trainer:
             images = images.to(self.device, non_blocking=True)
             labels = labels.to(self.device, non_blocking=True)
 
-            with autocast(enabled=self.use_amp):
+            with autocast(self.device.type, enabled=self.use_amp):
                 logits = self.model(images)
                 loss = self.criterion(logits, labels)
                 loss = loss / self.accum_steps
@@ -356,6 +357,16 @@ class Trainer:
                 acc=f"{total_correct / total_samples:.4f}",
             )
 
+        # Handle any remaining gradients from the final incomplete accumulation cycle
+        if len(loader) % self.accum_steps != 0:
+            self.scaler.unscale_(self.optimizer)
+            nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_norm)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+            self.optimizer.zero_grad()
+            if self.scheduler is not None:
+                self.scheduler.step()
+
         return total_loss / total_samples, total_correct / total_samples
 
     @torch.no_grad()
@@ -369,7 +380,7 @@ class Trainer:
             images = images.to(self.device, non_blocking=True)
             labels = labels.to(self.device, non_blocking=True)
 
-            with autocast(enabled=self.use_amp):
+            with autocast(self.device.type, enabled=self.use_amp):
                 logits = self.model(images)
                 loss = self.criterion(logits, labels)
 
@@ -386,6 +397,6 @@ class Trainer:
         if best is None:
             logger.warning("No checkpoint found — model weights unchanged.")
             return
-        state = torch.load(best, map_location=self.device)
+        state = torch.load(best, map_location=self.device, weights_only=False)
         self.model.load_state_dict(state["model_state_dict"])
         logger.info("Loaded best checkpoint (val_acc=%.4f): %s", state["val_acc"], best)

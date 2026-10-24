@@ -141,6 +141,22 @@ class TestPermutation:
         with pytest.raises(TypeError):
             permute_image(img, perm)
 
+    def test_roundtrip_block_permutation(self):
+        from cryptovit.encryption.permutation import inverse_permute_blocks, permute_blocks
+        img = self._make_image(H=16, W=16, C=3)
+        perm = np.random.default_rng(3).permutation(16).astype(np.int64)
+        scrambled = permute_blocks(img, block_size=4, perm=perm)
+        restored = inverse_permute_blocks(scrambled, block_size=4, perm=perm)
+        assert np.array_equal(img, restored)
+
+    def test_roundtrip_block_permutation_2d(self):
+        from cryptovit.encryption.permutation import inverse_permute_blocks, permute_blocks
+        img = np.random.default_rng(4).integers(0, 256, (16, 16), dtype=np.uint8)
+        perm = np.random.default_rng(4).permutation(16).astype(np.int64)
+        scrambled = permute_blocks(img, block_size=4, perm=perm)
+        restored = inverse_permute_blocks(scrambled, block_size=4, perm=perm)
+        assert np.array_equal(img, restored)
+
 
 # ===========================================================================
 # DNA encoding / decoding

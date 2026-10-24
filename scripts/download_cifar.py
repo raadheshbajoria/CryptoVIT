@@ -4,8 +4,11 @@ scripts/download_cifar.py
 Resume-capable CIFAR-10 / CIFAR-100 downloader.
 Falls back to torchvision if the file is already complete.
 """
-import os, sys, time, tarfile
-import urllib.request
+import os
+import sys
+import tarfile
+import time
+from urllib.request import Request, urlopen
 
 DATASETS = {
     "cifar10": {
@@ -31,14 +34,14 @@ def download(name="cifar10", dest_dir="data/raw"):
     if existing >= expected:
         print(f"[{name}] Already downloaded ({existing/1e6:.1f} MB). Skipping.")
     else:
-        req = urllib.request.Request(info["url"])
+        req = Request(info["url"])
         if existing:
             req.add_header("Range", f"bytes={existing}-")
             print(f"[{name}] Resuming from {existing/1e6:.1f} MB ...")
         else:
             print(f"[{name}] Starting download ...")
 
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urlopen(req, timeout=60) as resp:
             mode = "ab" if existing else "wb"
             downloaded = existing
             chunk_size = 131072
@@ -61,15 +64,16 @@ def download(name="cifar10", dest_dir="data/raw"):
         print(f"\n[{name}] Download complete: {downloaded/1e6:.1f} MB")
 
     # Extract
-    extract_dir = os.path.join(dest_dir, name.replace("cifar", "cifar-") + "-batches-py")
-    # cifar10 -> cifar-10-batches-py, cifar100 -> cifar-100-python
     marker_dir = os.path.join(dest_dir, "cifar-10-batches-py" if name == "cifar10" else "cifar-100-python")
     if os.path.exists(marker_dir):
         print(f"[{name}] Already extracted.")
     else:
         print(f"[{name}] Extracting ...")
         with tarfile.open(dest, "r:gz") as tf:
-            tf.extractall(dest_dir)
+            try:
+                tf.extractall(dest_dir, filter="data")
+            except TypeError:
+                tf.extractall(dest_dir)
         print(f"[{name}] Extraction complete.")
 
     print(f"[{name}] Ready in {dest_dir}/")

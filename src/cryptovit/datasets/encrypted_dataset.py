@@ -4,7 +4,7 @@ cryptovit/datasets/encrypted_dataset.py
 Encrypted CIFAR dataset for CryptoViT Phases 7–11.
 
 Two modes of operation
-----------------------
+---------------------
 1. **On-the-fly encryption** (``mode="online"``)
    The dataset encrypts images at load time.  Useful for development and
    debugging.  Slow for full training due to Python-level encryption loop.
@@ -38,13 +38,12 @@ Usage
 from __future__ import annotations
 
 import logging
-import os
-import pickle
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 import numpy as np
 import torch
+from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm import tqdm
@@ -122,8 +121,6 @@ class EncryptedCIFARDataset(Dataset):
             enc_np = self._encrypted_images[idx]
             label = int(self._labels[idx])
 
-        # Convert to PIL for transforms (torchvision convention)
-        from PIL import Image
         enc_pil = Image.fromarray(enc_np)
 
         if self.transform is not None:
@@ -210,7 +207,6 @@ def generate_encrypted_dataset(
 
 def _pil_to_uint8(img) -> np.ndarray:
     """Convert PIL Image or tensor to HWC uint8 numpy array."""
-    import numpy as np
     if hasattr(img, "numpy"):           # torch.Tensor
         arr = img.numpy()
         if arr.ndim == 3 and arr.shape[0] in (1, 3):

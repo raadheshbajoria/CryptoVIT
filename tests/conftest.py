@@ -1,7 +1,7 @@
 """
 tests/conftest.py
 =================
-Shared pytest fixtures for CryptoViT tests.
+Shared pytest fixtures and configuration for CryptoViT tests.
 """
 
 from __future__ import annotations
@@ -13,6 +13,30 @@ import pytest
 
 # Make the src package importable without installation
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="run integration tests that download data",
+    )
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "integration: marks tests as integration tests (skipped by default unless --run-integration is passed)"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-integration"):
+        return
+    skip_integration = pytest.mark.skip(reason="need --run-integration option to run")
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_integration)
 
 
 @pytest.fixture(scope="session")
@@ -27,3 +51,4 @@ def cifar100_cfg():
     """Return merged CIFAR-100 configuration."""
     from cryptovit.utils import load_config
     return load_config(extra_files=["cifar100.yaml"])
+

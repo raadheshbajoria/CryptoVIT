@@ -45,3 +45,9 @@ mlruns/
 # Large binary docs (keep only README)
 *.docx
 *.pdf
+
+# Testing & Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/

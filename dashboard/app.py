@@ -22,10 +22,7 @@ Or with API backend:
 from __future__ import annotations
 
 import io
-import sys
-from pathlib import Path
 
-import numpy as np
 import requests
 import streamlit as st
 from PIL import Image
@@ -41,7 +38,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-API_URL = "http://localhost:8000"
+API_URL = "http://127.0.0.1:8000"
 
 # -------------------------------------------------------------------------
 # Sidebar — configuration
@@ -54,13 +51,6 @@ st.sidebar.markdown(
     "*VIT Bhopal University — B.Tech ECE+AI/Cybernetics*"
 )
 st.sidebar.divider()
-
-encryption_key = st.sidebar.text_input(
-    "Encryption Key",
-    value="CryptoViT_Research_Key_2025",
-    type="password",
-    help="Secret key used for the 4D hyperchaotic encryption system.",
-)
 
 api_url = st.sidebar.text_input(
     "API URL",
@@ -95,12 +85,12 @@ def _api_get(endpoint: str):
         return None
 
 
-def _api_post_image(endpoint: str, img_bytes: bytes, key: str, **kwargs):
+def _api_post_image(endpoint: str, img_bytes: bytes, **kwargs):
     try:
         r = requests.post(
             f"{api_url}{endpoint}",
             files={"file": ("image.png", img_bytes, "image/png")},
-            data={"key": key, **kwargs},
+            data=kwargs,
             timeout=30,
         )
         r.raise_for_status()
@@ -160,7 +150,7 @@ if uploaded is not None:
     with col_enc:
         st.subheader("2️⃣ Encrypted Image")
         with st.spinner("Encrypting…"):
-            enc_resp = _api_post_image("/encrypt", _pil_to_bytes(orig_pil), key=encryption_key)
+            enc_resp = _api_post_image("/encrypt", _pil_to_bytes(orig_pil))
 
         if enc_resp:
             enc_pil = _bytes_to_pil(enc_resp.content)
@@ -185,7 +175,7 @@ if uploaded is not None:
             with st.spinner("Classifying encrypted image…"):
                 pred_resp = _api_post_image(
                     "/predict", _pil_to_bytes(orig_pil),
-                    key=encryption_key, encrypt_first="true",
+                    encrypt_first="true",
                 )
             if pred_resp:
                 p = pred_resp.json()
@@ -237,12 +227,12 @@ if uploaded is not None:
     if show_comparison:
         st.subheader("📊 Baseline Comparison")
         with st.spinner("Classifying plaintext with baseline ViT…"):
-            base_resp = _api_post_image("/predict_plaintext", _pil_to_bytes(orig_pil), key="")
+            base_resp = _api_post_image("/predict_plaintext", _pil_to_bytes(orig_pil))
 
         if base_resp and enc_pil is not None:
             b = base_resp.json()
             st.markdown(f"**Baseline ViT (plaintext):** {b['class_name'].upper()} ({b['confidence']*100:.1f}%)")
-            if pred_resp and enc_pil:
+            if 'pred_resp' in locals() and pred_resp is not None:
                 p = pred_resp.json()
                 st.markdown(f"**CryptoViT (encrypted):** {p['class_name'].upper()} ({p['confidence']*100:.1f}%)")
                 agree = b["class_name"] == p["class_name"]

@@ -30,7 +30,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from torchvision import datasets, transforms
+from torchvision import datasets
 
 from cryptovit.datasets.encrypted_dataset import generate_encrypted_dataset
 from cryptovit.utils.config import load_config
@@ -62,8 +62,6 @@ def main() -> None:
     logger.info("Output dir : %s", enc_root)
 
     cls = datasets.CIFAR10 if dataset_name == "cifar10" else datasets.CIFAR100
-    # Load without transform — we want PIL images
-    raw_transform = transforms.Compose([])  # identity
 
     # Train split
     train_ds = cls(root=str(data_root), train=True, transform=None, download=True)

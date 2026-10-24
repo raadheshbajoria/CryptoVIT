@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Optional
 
 import numpy as np
 
@@ -126,7 +125,7 @@ class KeyGenerator:
         """
         raw = self._diff_sys.generate(n)
         # Map to [0, 7] via modular arithmetic on absolute value
-        return (np.abs(raw) * 1000).astype(np.uint64) % 8
+        return ((np.abs(raw) * 1000).astype(np.uint64) % 8).astype(np.uint8)
 
     # ------------------------------------------------------------------
     # Reset

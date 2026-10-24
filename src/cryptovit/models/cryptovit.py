@@ -31,12 +31,11 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-from einops import rearrange
 from omegaconf import DictConfig
 
 from cryptovit.models.patch_embedding import CryptoPatchEmbedding
 from cryptovit.models.positional_encoding import KeyAwarePositionalEncoding
-from cryptovit.models.vit import DropPath, MLP, MultiHeadSelfAttention, TransformerBlock
+from cryptovit.models.vit import TransformerBlock
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # CryptoViT - Base Configuration
 # All values can be overridden by experiment-specific configs
 # or via CLI: python script.py key=value
@@ -65,7 +65,7 @@ model:
   pool: cls
 
 # ----------------------------------------------------------
-# Encryption (Phase 3+ placeholder)
+# Encryption
 # ----------------------------------------------------------
 encryption:
   enabled: false
