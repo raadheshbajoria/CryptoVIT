@@ -109,8 +109,19 @@ def test_page_without_an_image(fake_api):
     at = _open_app(fake_api)
     assert "Medical" in at.title[0].value
     assert any("not a medical device" in w.value.lower() for w in at.warning)
-    assert [m.label for m in at.metric][:2] == ["Dataset", "Device"]
     assert any("pick a demo image" in i.value.lower() for i in at.info)
+
+    # the status row, university line and footer were removed on request
+    labels = [m.label for m in at.metric]
+    for removed in ("Dataset", "Device", "Trained models", "Classes"):
+        assert removed not in labels
+    all_text = " ".join(
+        [m.value for m in at.markdown] + [c.value for c in at.caption]
+        + [i.value for i in at.info]
+    )
+    assert "Bhopal" not in all_text
+    assert "Final Year" not in all_text
+    assert "Classes:" not in all_text
 
 
 @pytest.mark.skipif(not DEMO_IMAGES, reason="no demo_images to select")
@@ -154,7 +165,19 @@ def test_results_table_when_results_exist(fake_api):
     assert results_table.iloc[0]["Melanoma sensitivity"] == "55.0%"
     assert not any("Results appear here" in i.value for i in at.info)
 
+    # the per-class chart is horizontal (classes on the y axis)
+    charts = at.get("vega_lite_chart")
+    assert len(charts) == 1
+    import json
+    spec = json.loads(charts[0].proto.spec)
+    encoding = spec.get("encoding") or spec["layer"][0]["encoding"]
+    assert encoding["y"]["field"] == "Class"            # classes on the y axis
+    assert encoding["x"]["field"] == "Sensitivity"
+    assert encoding["x"]["axis"]["labelAngle"] == 0     # horizontal axis labels
+    assert encoding["y"]["axis"]["labelAngle"] == 0
+
 
 def test_results_placeholder_before_training_finishes(fake_api):
     at = _open_app(fake_api)
     assert any("Results appear here" in i.value for i in at.info)
+

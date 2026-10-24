@@ -24,6 +24,8 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import altair as alt
+import pandas as pd
 import requests
 import streamlit as st
 from PIL import Image
@@ -54,8 +56,7 @@ DEMO_DIR = Path(__file__).resolve().parents[1] / "demo_images"
 st.sidebar.title("CryptoViT")
 st.sidebar.markdown(
     "**Chaos-Assisted Vision Transformer**\n\n"
-    "Privacy-Preserving Image Classification\n\n"
-    "*VIT Bhopal University - B.Tech ECE+AI/Cybernetics*"
+    "Privacy-Preserving Image Classification"
 )
 st.sidebar.divider()
 
@@ -161,21 +162,6 @@ if health_resp:
     h = health_resp.json()
     class_names = h.get("class_names", [])
     native_size = h.get("image_size", 32)
-    variants = h.get("variants", {})
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Dataset", h.get("dataset", "unknown"))
-    col2.metric("Device", h.get("device", "unknown"))
-    n_trained = sum(1 for v in variants.values() if v.get("trained"))
-    col3.metric("Trained models", f"{n_trained} / {len(variants) or 4}")
-    col4.metric("Classes", len(class_names))
-    if class_names:
-        st.caption("Classes: " + ", ".join(class_names))
-    if n_trained < len(variants):
-        st.info(
-            "Some models are not trained (yet). An untrained model gives "
-            "meaningless predictions; trained ones are marked yes in the table."
-        )
-    st.divider()
 
 # Image source: sidebar demo image, otherwise an upload
 uploaded = st.file_uploader(
@@ -444,16 +430,39 @@ else:
     sel = next(r for r in results if r["variant"] == chosen)
     sens = sel.get("per_class_sensitivity") or []
     if sens and class_names:
-        st.bar_chart({"sensitivity": {n: s for n, s in zip(class_names, sens)}})
-
-# -------------------------------------------------------------------------
-# Footer
-# -------------------------------------------------------------------------
-
-st.divider()
-st.markdown(
-    "<small>CryptoViT - Final Year B.Tech Capstone | VIT Bhopal University | "
-    "ECE + AI/Cybernetics. Research prototype; not a medical device; not for "
-    "clinical use.</small>",
-    unsafe_allow_html=True,
-)
+        support = sel.get("per_class_support") or [None] * len(sens)
+        # Horizontal bars: class names read left to right, so there is no need
+        # to tilt your head. The percentage is part of each label.
+        chart_df = pd.DataFrame({
+            "Class": [f"{n}  ({s * 100:.0f}%)" for n, s in zip(class_names, sens)],
+            "Sensitivity": sens,
+            "Test images": support[: len(sens)],
+            "Is melanoma": [n == "melanoma" for n in class_names[: len(sens)]],
+        })
+        bars = (
+            alt.Chart(chart_df)
+            .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4, size=22)
+            .encode(
+                y=alt.Y(
+                    "Class:N",
+                    sort=alt.EncodingSortField(field="Sensitivity", order="descending"),
+                    title=None,
+                    axis=alt.Axis(labelLimit=520, labelFontSize=13, labelAngle=0),
+                ),
+                x=alt.X(
+                    "Sensitivity:Q",
+                    scale=alt.Scale(domain=[0, 1]),
+                    title="Sensitivity: share of this class that was found",
+                    axis=alt.Axis(format="%", tickCount=5, labelAngle=0, grid=True),
+                ),
+                color=alt.condition(
+                    alt.datum["Is melanoma"],
+                    alt.value("#e4572e"),
+                    alt.value("#4c78a8"),
+                ),
+                tooltip=["Class", alt.Tooltip("Sensitivity:Q", format=".1%"), "Test images"],
+            )
+            .properties(height=42 * len(chart_df))
+        )
+        st.altair_chart(bars, width="stretch")
+        st.caption("Melanoma is highlighted in orange.")
