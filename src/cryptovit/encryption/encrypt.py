@@ -40,6 +40,11 @@ from typing import Dict, Tuple
 
 import numpy as np
 
+from cryptovit.encryption.block_scheme import (
+    block_decrypt,
+    block_encrypt,
+    parse_block_scheme,
+)
 from cryptovit.encryption.diffusion import diffuse, inverse_diffuse
 from cryptovit.encryption.key_generator import KeyGenerator
 from cryptovit.encryption.permutation import (
@@ -55,8 +60,12 @@ DEFAULT_SCHEME = "v1"
 
 
 def _check_scheme(scheme: str) -> str:
-    if scheme not in SCHEMES:
-        raise ValueError(f"Unknown encryption scheme '{scheme}'; choose from {SCHEMES}.")
+    """Accept "v1", "v2" or a block scheme such as "block2" (see block_scheme.py)."""
+    if scheme not in SCHEMES and parse_block_scheme(scheme) is None:
+        raise ValueError(
+            f"Unknown encryption scheme '{scheme}'; choose from {SCHEMES} "
+            "or 'block<B>' (e.g. 'block2')."
+        )
     return scheme
 
 
@@ -144,6 +153,17 @@ def encrypt(
     _check_scheme(scheme)
 
     key_bytes = _as_key_bytes(key)
+    block = parse_block_scheme(scheme)
+    if block is not None:
+        encrypted = block_encrypt(image, key_bytes, block, transient_steps)
+        meta = {
+            "shape": image.shape,
+            "key_hash": hashlib.sha256(key_bytes).hexdigest(),
+            "scheme": scheme,
+        }
+        logger.debug("Encrypted image shape=%s scheme=%s", image.shape, scheme)
+        return encrypted, meta
+
     perm, ks, rules = _streams_for(key_bytes, image, transient_steps, scheme)
 
     # Phase 3: Permutation
@@ -193,6 +213,10 @@ def decrypt(
     if scheme is None:
         scheme = (meta or {}).get("scheme", DEFAULT_SCHEME)
     _check_scheme(scheme)
+
+    block = parse_block_scheme(scheme)
+    if block is not None:
+        return block_decrypt(encrypted, _as_key_bytes(key), block, transient_steps)
 
     # Same streams as encrypt (derived in the same fixed order, then cached)
     perm, ks, rules = _streams_for(key, encrypted, transient_steps, scheme)
