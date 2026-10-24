@@ -71,3 +71,8 @@ Everything listed here was actually done; numbers are copied from real command o
 
 | 01:12 | Correction: three log entries above had times I had estimated too late (they were ahead of the machine clock); they now carry the real commit times. |
 
+| 01:22 | Started a **proxy test** on the GPU alongside the main training: a small ViT (embed 96, depth 4, 2x2 patches) on native 28x28 DermaMNIST, identical settings for plaintext, per-pixel (v1) and block2, 2 seeds each, to see whether block2 is easier to learn. Not a final result (different model and resolution from the main pipeline). |
+| 01:36 | Variant B (full-size plain ViT, per-pixel encryption) finished the main run: test accuracy 12.9%, balanced accuracy 19.4%, macro AUC 0.573 (chance balanced accuracy is 14.3%). Variant C started. |
+| 01:40 | You reported the laptop was very hot. GPU read **82 C at 100% load**. **I stopped the proxy test** (my own extra load) before the block2 runs happened. Partial proxy results (test balanced accuracy): plaintext 47.5% and 44.6%; per-pixel 20.5% and 19.3%; **block2 not measured**, so no conclusion about block2 yet. Suggested cooling (hard flat surface, raised back, vents clear, plugged in, fan on max) and offered to pause (training is resumable) or slow down. |
+| 01:42 | You chose **keep training**. Main run continues unchanged; no additional GPU load will be added while it runs. The demo API/dashboard are idle on CPU. |
+
