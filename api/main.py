@@ -228,7 +228,9 @@ async def encrypt_image(
         enc_np, meta = encrypt(img_np, key)
 
         # Compute and cache security metrics
-        _last_metrics = compute_all_security_metrics(img_np, enc_np)
+        _last_metrics = compute_all_security_metrics(
+            img_np, enc_np, key=key, encrypt_fn=encrypt
+        )
         _last_metrics["key_hash"] = meta["key_hash"]
 
         return Response(

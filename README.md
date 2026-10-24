@@ -46,7 +46,11 @@ CryptoViT/
 
 ## Features & Implementation
 
-- **4D Hyperchaotic Map & DNA Diffusion**: Reversible pixel-level scrambling and DNA algebraic XOR diffusion yielding entropy > 7.99, NPCR > 99%, and UACI ~ 33.46%.
+- **4D Hyperchaotic Map & DNA Diffusion**: Lossless pixel-level scrambling followed by DNA-XOR and chained-XOR diffusion (`decrypt(encrypt(x)) == x` exactly).
+  - **Key sensitivity** is high: ciphertexts under keys that differ by one bit differ in about 99.7% of pixels (UACI about 33.9%) on a 32x32 test image.
+  - **Plaintext sensitivity is limited.** Changing one plaintext pixel changed only about 1.6% (corner pixel) to 8% (middle pixel) of ciphertext pixels in the same test, because the diffusion is per-pixel with a forward-only chain. The textbook NPCR > 99% / UACI ~ 33.46% targets are therefore *not* met by this test; see `plaintext_sensitivity` in `cryptovit.evaluation.security_metrics`.
+  - **Entropy** of a 32x32 channel cannot exceed about 7.82 even for ideal noise; the usual "> 7.99" applies to images of roughly 256x256 or larger (`expected_uniform_entropy` gives the reference for any size).
+  - These are statistical checks, not a security proof. The scheme is a research prototype and should not be used to protect real data.
 - **CryptoViT Architecture**: Native Vision Transformer tailored for protected image classification with convolutional patch embedding front-end and key-aware positional encoding.
 - **Robust Training Pipeline**: Cosine learning rate decay with linear warmup, mixed precision (AMP), gradient accumulation, and checkpoint manager.
 - **Interactive Stack**: FastAPI REST inference engine and Streamlit UI for visual inspection and live security diagnostics.

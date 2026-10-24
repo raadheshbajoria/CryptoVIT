@@ -14,11 +14,23 @@ Metrics implemented
 * Encryption/decryption time
 
 These metrics are standard in the image-encryption literature.
-Reference values for a good encryption scheme:
-  Entropy  > 7.99  (max 8.0 for 8-bit images)
-  NPCR     > 99%   (ideally ~99.6%)
-  UACI     ~ 33%   (ideal 33.46%)
+Reference values often quoted for a good scheme on large images:
+  Entropy  > 7.99  (max 8.0; unreachable for small images, see below)
+  NPCR     > 99%   (ideally ~99.6%)  — plaintext sensitivity: change ONE
+                                       plaintext pixel, compare the two ciphertexts
+  UACI     ~ 33%   (ideal 33.46%)    — same test as NPCR
   Correlation ≈ 0  (should be < 0.01 in absolute value)
+
+Caveats
+-------
+* Entropy estimated from n pixels per channel is biased low: for uniform noise
+  the expected value is about log2(256) - 255 / (2 n ln 2), i.e. ~7.82 for a
+  32x32 channel and ~7.99 only for roughly 256x256 or larger.
+  ``expected_uniform_entropy`` gives the right reference for an image size.
+* NPCR/UACI are defined between two *ciphertexts* (one plaintext pixel or one
+  key bit changed). ``npcr`` / ``uaci`` between a plaintext and its own
+  ciphertext measure something else (see ``compute_all_security_metrics``).
+* Good statistics do not by themselves establish cryptographic security.
 
 References
 ----------
@@ -29,6 +41,7 @@ Zhu & Zhu (2020), Entropy.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from typing import Callable, Dict, Optional
 
@@ -40,6 +53,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Shannon Entropy
 # ---------------------------------------------------------------------------
+
+def expected_uniform_entropy(n_samples: int, levels: int = 256) -> float:
+    """Expected plug-in entropy of ``n_samples`` i.i.d. uniform samples.
+
+    Uses the first-order (Miller-Madow) bias correction:
+    ``log2(levels) - (levels - 1) / (2 * n_samples * ln 2)``. This is the
+    realistic upper reference for a channel of ``n_samples`` pixels; the
+    "7.99" figure only applies to images of roughly 256x256 pixels or more.
+    """
+    if n_samples <= 0:
+        raise ValueError("n_samples must be positive.")
+    return math.log2(levels) - (levels - 1) / (2.0 * n_samples * math.log(2))
+
 
 def compute_entropy(image: np.ndarray) -> Dict[str, float]:
     """Compute Shannon entropy of each channel and overall.
@@ -69,6 +95,9 @@ def compute_entropy(image: np.ndarray) -> Dict[str, float]:
         all_entropy.append(ent)
 
     results["overall"] = float(np.mean(all_entropy))
+    results["expected_for_uniform_noise"] = expected_uniform_entropy(
+        image.shape[0] * image.shape[1]
+    )
     return results
 
 
@@ -271,6 +300,60 @@ def key_sensitivity(
 
 
 # ---------------------------------------------------------------------------
+# Plaintext Sensitivity (the standard NPCR / UACI test)
+# ---------------------------------------------------------------------------
+
+def plaintext_sensitivity(
+    image: np.ndarray,
+    key: str,
+    encrypt_fn: Callable,
+    n_trials: int = 10,
+    seed: int = 0,
+) -> Dict[str, float]:
+    """Standard NPCR/UACI: change ONE plaintext pixel, compare the ciphertexts.
+
+    For each trial a random pixel/channel has its least-significant bit
+    flipped, both images are encrypted with the same key, and NPCR/UACI are
+    computed between the two ciphertexts. Ideal values for a cipher with full
+    diffusion are NPCR ~99.6% and UACI ~33.46%.
+
+    Parameters
+    ----------
+    image : (H, W) or (H, W, C) uint8 array
+    key : str
+    encrypt_fn : callable(image, key) -> encrypted array (not a tuple)
+    n_trials : int
+        Number of random single-pixel modifications to average over.
+    seed : int
+        RNG seed for the chosen positions.
+
+    Returns
+    -------
+    dict with mean ``npcr`` and ``uaci`` (percent) over the trials, plus the
+    per-trial minimum and maximum NPCR.
+    """
+    if n_trials <= 0:
+        raise ValueError("n_trials must be positive.")
+    baseline = encrypt_fn(image, key)
+    rng = np.random.default_rng(seed)
+    npcrs, uacis = [], []
+    for _ in range(n_trials):
+        idx = tuple(int(rng.integers(0, s)) for s in image.shape)
+        modified = image.copy()
+        modified[idx] ^= np.uint8(1)
+        other = encrypt_fn(modified, key)
+        npcrs.append(npcr(baseline, other))
+        uacis.append(uaci(baseline, other))
+    return {
+        "npcr": float(np.mean(npcrs)),
+        "uaci": float(np.mean(uacis)),
+        "npcr_min": float(np.min(npcrs)),
+        "npcr_max": float(np.max(npcrs)),
+        "n_trials": n_trials,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Encryption / Decryption Timing
 # ---------------------------------------------------------------------------
 
@@ -349,17 +432,23 @@ def compute_all_security_metrics(
     # Adjacent-pixel correlation of plaintext (for comparison)
     results["correlation_plaintext"] = adjacent_pixel_correlation(plaintext)
 
-    # NPCR / UACI between plaintext and encrypted (structural change)
+    # Fraction of pixels / mean intensity change between a plaintext and its OWN
+    # ciphertext. This is NOT the standard NPCR/UACI (those compare two
+    # ciphertexts, see ``plaintext_sensitivity``); key names kept for the API.
     results["npcr_plain_vs_enc"] = npcr(plaintext, encrypted)
     results["uaci_plain_vs_enc"] = uaci(plaintext, encrypted)
 
-    # Key sensitivity (optional)
     if key is not None and encrypt_fn is not None:
-        ks = key_sensitivity(
-            plaintext, key,
-            encrypt_fn=lambda img, k: encrypt_fn(img, k)[0],
+        cipher_only = lambda img, k: encrypt_fn(img, k)[0]  # noqa: E731
+
+        # Key sensitivity: ciphertexts under two keys differing in one bit
+        results["key_sensitivity"] = key_sensitivity(
+            plaintext, key, encrypt_fn=cipher_only
         )
-        results["key_sensitivity"] = ks
+        # Plaintext sensitivity: standard NPCR/UACI (one changed pixel)
+        results["plaintext_sensitivity"] = plaintext_sensitivity(
+            plaintext, key, encrypt_fn=cipher_only
+        )
 
     _log_security_summary(results)
     return results
@@ -367,11 +456,13 @@ def compute_all_security_metrics(
 
 def _log_security_summary(results: Dict) -> None:
     ent = results.get("entropy", {}).get("overall", 0)
-    npcr_val = results.get("npcr_plain_vs_enc", 0)
-    uaci_val = results.get("uaci_plain_vs_enc", 0)
+    ent_ref = results.get("entropy", {}).get("expected_for_uniform_noise", 0)
     hcorr = results.get("correlation_encrypted", {}).get("horizontal", 0)
+    ps = results.get("plaintext_sensitivity")
 
-    logger.info(
-        "Security | entropy=%.4f  npcr=%.2f%%  uaci=%.2f%%  h_corr=%.4f",
-        ent, npcr_val, uaci_val, hcorr,
-    )
+    msg = "Security | entropy=%.4f (uniform-noise ref %.4f)  h_corr=%.4f"
+    args = [ent, ent_ref, hcorr]
+    if ps:
+        msg += "  plaintext-sensitivity npcr=%.2f%% uaci=%.2f%%"
+        args += [ps["npcr"], ps["uaci"]]
+    logger.info(msg, *args)

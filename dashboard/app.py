@@ -206,9 +206,25 @@ if uploaded is not None:
             chi = m.get("histogram", {})
 
             mc1, mc2, mc3, mc4 = st.columns(4)
-            mc1.metric("Entropy (overall)", f"{ent.get('overall', 0):.4f}", help="Target: > 7.99")
-            mc2.metric("NPCR", f"{npcr_val:.2f}%", help="Target: > 99%")
-            mc3.metric("UACI", f"{uaci_val:.2f}%", help="Target: ~ 33.46%")
+            mc1.metric(
+                "Entropy (overall)", f"{ent.get('overall', 0):.4f}",
+                help=(
+                    "Reference for uniform noise at this image size: "
+                    f"{ent.get('expected_for_uniform_noise', 8.0):.4f}. "
+                    "The usual '> 7.99' only applies to images of about "
+                    "256x256 pixels or more."
+                ),
+            )
+            mc2.metric(
+                "Pixels changed vs plaintext", f"{npcr_val:.2f}%",
+                help="Share of pixels that differ from the original image. "
+                     "Not the standard NPCR (see plaintext sensitivity below).",
+            )
+            mc3.metric(
+                "Mean change vs plaintext", f"{uaci_val:.2f}%",
+                help="Mean absolute intensity change from the original image. "
+                     "Not the standard UACI.",
+            )
             mc4.metric(
                 "H.Correlation",
                 f"{corr.get('horizontal', 0):.4f}",
@@ -216,10 +232,18 @@ if uploaded is not None:
             )
 
             ks = m.get("key_sensitivity")
-            if ks:
-                ks1, ks2 = st.columns(2)
-                ks1.metric("Key Sensitivity NPCR", f"{ks.get('npcr', 0):.2f}%")
-                ks2.metric("Key Sensitivity UACI", f"{ks.get('uaci', 0):.2f}%")
+            ps = m.get("plaintext_sensitivity")
+            if ks or ps:
+                s1, s2, s3, s4 = st.columns(4)
+                if ks:
+                    s1.metric("Key sensitivity NPCR", f"{ks.get('npcr', 0):.2f}%",
+                              help="Ciphertexts under keys differing by one bit.")
+                    s2.metric("Key sensitivity UACI", f"{ks.get('uaci', 0):.2f}%")
+                if ps:
+                    s3.metric("Plaintext sensitivity NPCR", f"{ps.get('npcr', 0):.2f}%",
+                              help="One plaintext pixel changed. Ideal ~99.6%.")
+                    s4.metric("Plaintext sensitivity UACI", f"{ps.get('uaci', 0):.2f}%",
+                              help="One plaintext pixel changed. Ideal ~33.46%.")
 
     # ------------------------------------------------------------------ #
     # Baseline comparison                                                 #
