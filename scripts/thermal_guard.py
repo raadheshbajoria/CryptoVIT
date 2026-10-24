@@ -163,7 +163,7 @@ def gpu_temperature() -> Optional[float]:
 # ---------------------------------------------------------------------------
 
 def run(pid: int, high: float, low: float, interval: float,
-        duty: float = 1.0, cycle: float = 60.0) -> int:
+        duty: float = 1.0, cycle: float = 60.0, latch: Optional[Path] = None) -> int:
     """Guard ``pid``: temperature rule (high/low) plus optional duty-cycle pacing.
 
     The job is frozen whenever *either* the temperature rule or the pacing
@@ -182,8 +182,13 @@ def run(pid: int, high: float, low: float, interval: float,
 
     logger.info("Watching PID %d: suspend at >= %.0f C, resume at <= %.0f C, "
                 "duty %.0f%% per %.0f s cycle", pid, high, low, duty * 100, cycle)
-    # If an earlier guard was killed while the job was frozen, start it again.
-    resume_tree(pid, set())
+    # If an earlier guard was killed while the job was frozen, start it again --
+    # unless an emergency pause is active (its latch file exists): that freeze
+    # must only be lifted by a person, so do not touch the job then.
+    if latch is not None and Path(latch).exists():
+        logger.warning("Emergency latch %s exists: leaving the job as it is.", latch)
+    else:
+        resume_tree(pid, set())
 
     def set_frozen(want: bool) -> None:
         nonlocal frozen, frozen_since, total_frozen, suspended_pids
@@ -241,6 +246,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--cycle", type=float, default=60.0,
                    help="length of one duty cycle in seconds (default 60)")
     p.add_argument("--log", default=None, help="also write the log to this file")
+    p.add_argument("--latch", default="experiments/EMERGENCY_PAUSE.txt",
+                   help="emergency-pause latch file (see emergency_pause.py)")
     args = p.parse_args(argv)
 
     handlers = [logging.StreamHandler(sys.stdout)]
@@ -249,7 +256,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         handlers.append(logging.FileHandler(args.log, encoding="utf-8"))
     logging.basicConfig(level=logging.INFO, handlers=handlers,
                         format="%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    return run(args.pid, args.high, args.low, args.interval, args.duty, args.cycle)
+    return run(args.pid, args.high, args.low, args.interval, args.duty, args.cycle,
+               Path(args.latch) if args.latch else None)
 
 
 if __name__ == "__main__":
