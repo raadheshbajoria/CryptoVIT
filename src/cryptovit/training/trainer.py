@@ -170,11 +170,18 @@ class Trainer:
         # Loss
         self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
 
-        # Optimiser
+        # Optimiser — biases and 1-D params (LayerNorm, embeddings scales)
+        # are excluded from weight decay, which is standard ViT practice.
+        decay, no_decay = [], []
+        for p in model.parameters():
+            if p.requires_grad:
+                (no_decay if p.ndim <= 1 else decay).append(p)
         self.optimizer = AdamW(
-            model.parameters(),
+            [
+                {"params": decay, "weight_decay": t.weight_decay},
+                {"params": no_decay, "weight_decay": 0.0},
+            ],
             lr=t.learning_rate,
-            weight_decay=t.weight_decay,
             betas=tuple(t.betas),
         )
 
@@ -234,7 +241,9 @@ class Trainer:
             Training history (losses and accuracies per epoch).
         """
         t = self.cfg.training
-        steps_per_epoch = len(train_loader)
+        # The scheduler advances once per optimiser step, not per batch,
+        # so account for gradient accumulation when sizing the schedule.
+        steps_per_epoch = math.ceil(len(train_loader) / self.accum_steps)
         total_steps = self.epochs * steps_per_epoch
         warmup_steps = t.warmup_epochs * steps_per_epoch
 
@@ -346,16 +355,17 @@ class Trainer:
                 if self.scheduler is not None:
                     self.scheduler.step()
 
+            # Accumulate on-device; .item() forces a GPU sync every step.
             with torch.no_grad():
-                total_loss += loss.item() * self.accum_steps * labels.size(0)
-                preds = logits.argmax(dim=1)
-                total_correct += (preds == labels).sum().item()
+                total_loss += loss.detach() * self.accum_steps * labels.size(0)
+                total_correct += (logits.argmax(dim=1) == labels).sum()
                 total_samples += labels.size(0)
 
-            pbar.set_postfix(
-                loss=f"{total_loss / total_samples:.4f}",
-                acc=f"{total_correct / total_samples:.4f}",
-            )
+            if (step + 1) % 20 == 0 or step + 1 == len(loader):
+                pbar.set_postfix(
+                    loss=f"{float(total_loss) / total_samples:.4f}",
+                    acc=f"{float(total_correct) / total_samples:.4f}",
+                )
 
         # Handle any remaining gradients from the final incomplete accumulation cycle
         if len(loader) % self.accum_steps != 0:
@@ -367,7 +377,7 @@ class Trainer:
             if self.scheduler is not None:
                 self.scheduler.step()
 
-        return total_loss / total_samples, total_correct / total_samples
+        return float(total_loss) / total_samples, float(total_correct) / total_samples
 
     @torch.no_grad()
     def _val_epoch(self, loader: DataLoader) -> Tuple[float, float]:
