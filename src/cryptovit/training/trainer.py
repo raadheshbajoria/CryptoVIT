@@ -20,8 +20,9 @@ import logging
 import math
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
@@ -59,6 +60,32 @@ def _cosine_schedule_with_warmup(
         return max(scale, cosine * (1.0 - scale) + scale)
 
     return LambdaLR(optimizer, lr_lambda)
+
+
+def balanced_class_weights(targets: Sequence[int], num_classes: int) -> torch.Tensor:
+    """Inverse-frequency class weights: ``N / (num_classes * count_c)``.
+
+    A class with no training samples gets the weight of a single-sample class
+    instead of dividing by zero.
+    """
+    counts = np.bincount(np.asarray(targets, dtype=np.int64), minlength=num_classes)
+    weights = len(targets) / (num_classes * np.maximum(counts, 1))
+    return torch.tensor(weights, dtype=torch.float32)
+
+
+def build_class_weights(cfg: DictConfig, train_loader: DataLoader) -> Optional[torch.Tensor]:
+    """Class weights requested by ``cfg.training.class_weights`` ("none"|"balanced")."""
+    mode = cfg.training.get("class_weights", "none")
+    if mode in (None, "none", False):
+        return None
+    if mode != "balanced":
+        raise ValueError(f"training.class_weights must be 'none' or 'balanced', got '{mode}'.")
+    from cryptovit.datasets.cifar_dataset import get_dataset_targets
+
+    targets = get_dataset_targets(train_loader.dataset)
+    weights = balanced_class_weights(targets, cfg.dataset.num_classes)
+    logger.info("Using balanced class weights: %s", [round(w, 2) for w in weights.tolist()])
+    return weights
 
 
 def split_batch_for_memory(
@@ -171,6 +198,13 @@ class Trainer:
         ``key_embedding=`` on every forward pass (training and validation).
         Only models with a key-aware positional encoding accept it; leave
         ``None`` for every other model.
+    class_weights:
+        Optional per-class loss weights (see ``balanced_class_weights``), used
+        to counter class imbalance.
+
+    ``cfg.training.select_metric`` chooses what decides the "best" checkpoint
+    and early stopping: ``"accuracy"`` (default) or ``"balanced_accuracy"``
+    (mean per-class recall, the right choice for imbalanced medical data).
     """
 
     def __init__(
@@ -180,6 +214,7 @@ class Trainer:
         device: torch.device,
         experiment_dir: Path,
         key_embedding: Optional[torch.Tensor] = None,
+        class_weights: Optional[torch.Tensor] = None,
     ):
         self.model = model.to(device)
         self.cfg = cfg
@@ -198,8 +233,18 @@ class Trainer:
         self.use_amp: bool = t.mixed_precision and device.type == "cuda"
         self.label_smoothing: float = t.label_smoothing
 
-        # Loss
-        self.criterion = nn.CrossEntropyLoss(label_smoothing=self.label_smoothing)
+        self.select_metric: str = t.get("select_metric", "accuracy")
+        if self.select_metric not in ("accuracy", "balanced_accuracy"):
+            raise ValueError(
+                "training.select_metric must be 'accuracy' or 'balanced_accuracy', "
+                f"got '{self.select_metric}'."
+            )
+
+        # Loss (optionally class-weighted)
+        self.criterion = nn.CrossEntropyLoss(
+            weight=class_weights.to(device) if class_weights is not None else None,
+            label_smoothing=self.label_smoothing,
+        )
 
         # Optimiser — biases and 1-D params (LayerNorm, embeddings scales)
         # are excluded from weight decay, which is standard ViT practice.
@@ -243,10 +288,15 @@ class Trainer:
             "train_acc": [],
             "val_loss": [],
             "val_acc": [],
+            "val_balanced_acc": [],
+            "val_score": [],   # value of select_metric, used for "best"
             "lr": [],
         }
+        # Best value of the selection metric so far (named for history; it is
+        # balanced accuracy when select_metric="balanced_accuracy").
         self._best_val_acc: float = 0.0
         self._no_improve: int = 0
+        self._last_val_balanced_acc: float = 0.0
 
     # ------------------------------------------------------------------
     # Public API
@@ -309,6 +359,8 @@ class Trainer:
             t0 = time.time()
             train_loss, train_acc = self._train_epoch(train_loader, epoch)
             val_loss, val_acc = self._val_epoch(val_loader)
+            val_bal = self._last_val_balanced_acc
+            score = val_bal if self.select_metric == "balanced_accuracy" else val_acc
             elapsed = time.time() - t0
 
             current_lr = self.optimizer.param_groups[0]["lr"]
@@ -316,14 +368,16 @@ class Trainer:
             self.history["train_acc"].append(train_acc)
             self.history["val_loss"].append(val_loss)
             self.history["val_acc"].append(val_acc)
+            self.history["val_balanced_acc"].append(val_bal)
+            self.history["val_score"].append(score)
             self.history["lr"].append(current_lr)
 
             logger.info(
                 "Epoch %3d/%d | train_loss=%.4f acc=%.4f | "
-                "val_loss=%.4f acc=%.4f | lr=%.2e | %.1fs",
+                "val_loss=%.4f acc=%.4f bal_acc=%.4f | lr=%.2e | %.1fs",
                 epoch, self.epochs,
                 train_loss, train_acc,
-                val_loss, val_acc,
+                val_loss, val_acc, val_bal,
                 current_lr, elapsed,
             )
 
@@ -335,14 +389,15 @@ class Trainer:
                 self.tb_writer.add_scalar("LR",         current_lr, epoch)
 
             # Checkpointing
-            if val_acc > self._best_val_acc:
-                self._best_val_acc = val_acc
+            if score > self._best_val_acc:
+                self._best_val_acc = score
                 self._no_improve = 0
                 self.ckpt_manager.save(
-                    self.model, self.optimizer, epoch, val_acc,
-                    extra={"train_acc": train_acc},
+                    self.model, self.optimizer, epoch, score,
+                    extra={"train_acc": train_acc, "val_accuracy": val_acc,
+                           "select_metric": self.select_metric},
                 )
-                logger.info("  ✓ New best val_acc: %.4f", val_acc)
+                logger.info("  ✓ New best %s: %.4f", self.select_metric, score)
             else:
                 self._no_improve += 1
 
@@ -491,6 +546,7 @@ class Trainer:
         total_loss = 0.0
         total_correct = 0
         total_samples = 0
+        class_correct = class_count = None   # per-class tallies, sized lazily
 
         for images, labels in tqdm(loader, desc="Val", leave=False):
             images = images.to(self.device, non_blocking=True)
@@ -502,9 +558,21 @@ class Trainer:
 
             total_loss += loss.item() * labels.size(0)
             preds = logits.argmax(dim=1)
-            total_correct += (preds == labels).sum().item()
+            hit = preds == labels
+            total_correct += hit.sum().item()
             total_samples += labels.size(0)
 
+            n_cls = logits.shape[1]
+            if class_correct is None:
+                class_correct = torch.zeros(n_cls, device=self.device)
+                class_count = torch.zeros(n_cls, device=self.device)
+            class_correct += torch.bincount(labels[hit], minlength=n_cls).float()
+            class_count += torch.bincount(labels, minlength=n_cls).float()
+
+        present = class_count > 0
+        self._last_val_balanced_acc = float(
+            (class_correct[present] / class_count[present]).mean().item()
+        )
         return total_loss / total_samples, total_correct / total_samples
 
     def load_best_checkpoint(self) -> None:

@@ -53,13 +53,14 @@ from cryptovit.datasets import (
     get_class_names,
     get_dataloaders,
 )
+from cryptovit.datasets.medmnist_dataset import is_medmnist, load_medmnist_splits
 from cryptovit.evaluation import evaluate_model, print_metrics_table
 from cryptovit.models.cryptovit import CryptoViT
 from cryptovit.models.patch_embedding import CryptoPatchEmbedding
 from cryptovit.models.positional_encoding import KeyAwarePositionalEncoding
 from cryptovit.models.vit import VisionTransformer
 from cryptovit.training import Trainer
-from cryptovit.training.trainer import split_batch_for_memory
+from cryptovit.training.trainer import build_class_weights, split_batch_for_memory
 from cryptovit.utils.config import get_device, load_config
 from cryptovit.utils.logging_setup import setup_logging
 from cryptovit.utils.seed import set_seed
@@ -91,6 +92,12 @@ def _variant_cfg(variant: str, cfg):
         )
         cfg.training.batch_size = micro
         cfg.training.accumulation_steps = accum
+        # Evaluation also runs the full-resolution convolutions: batch 256 needs
+        # ~6.5 GB (measured) and overflows a 4 GB GPU. Batch size does not change
+        # the evaluation result.
+        cfg.evaluation.batch_size = min(
+            cfg.evaluation.batch_size, CRYPTO_EMBED_MAX_MICRO_BATCH
+        )
     return cfg
 
 
@@ -142,7 +149,17 @@ def _get_loaders(variant: str, cfg, data_root: Path):
     if variant == "A":
         return get_dataloaders(cfg, data_root=data_root, seed=cfg.project.seed)
 
-    cls = datasets.CIFAR10 if cfg.dataset.name == "cifar10" else datasets.CIFAR100
+    if is_medmnist(cfg.dataset.name):
+        # Official MedMNIST splits: train whole, separate validation set.
+        train_b, val_b, test_b = load_medmnist_splits(
+            cfg.dataset.name, data_root / "medmnist",
+            size=int(cfg.dataset.get("medmnist_size", 28)),
+        )
+        return build_encrypted_loaders(
+            cfg, train_b, test_b, ENCRYPTION_KEY, seed=cfg.project.seed, base_val=val_b
+        )
+
+    cls =datasets.CIFAR10 if cfg.dataset.name == "cifar10" else datasets.CIFAR100
     base_train = cls(root=str(data_root), train=True, transform=None, download=False)
     base_test  = cls(root=str(data_root), train=False, transform=None, download=False)
     return build_encrypted_loaders(
@@ -181,7 +198,10 @@ def run_variant(
     )
 
     var_dir = exp_dir / f"variant_{variant}"
-    trainer = Trainer(model, cfg, device, var_dir, key_embedding=key_embedding)
+    trainer = Trainer(
+        model, cfg, device, var_dir, key_embedding=key_embedding,
+        class_weights=build_class_weights(cfg, train_l),
+    )
     t0 = time.time()
     # resume=True continues an interrupted run from checkpoints/last.pt
     history = trainer.fit(train_l, val_l, resume=True)
@@ -203,6 +223,9 @@ def run_variant(
     results["variant"] = variant
     results["train_time_s"] = train_time
     results["best_val_acc"] = max(history["val_acc"]) if history["val_acc"] else 0.0
+    results["select_metric"] = cfg.training.get("select_metric", "accuracy")
+    results["best_val_score"] = max(history["val_score"]) if history.get("val_score") else 0.0
+    results["epochs_trained"] = len(history["val_acc"])
 
     return results
 
@@ -255,16 +278,19 @@ def main() -> None:
 
     # Print summary table
     print("\n" + "="*70)
-    print(f"  {'Variant':<10} {'Test Acc':>10} {'Best Val Acc':>14} {'Train Time (min)':>18}")
-    print("  " + "-"*66)
+    print(f"  {'Variant':<9} {'Test Acc':>9} {'Bal.Acc':>9} {'AUC':>7} "
+          f"{'Best Val':>9} {'Time (min)':>11}")
+    print("  " + "-"*60)
     for v, r in all_results.items():
         if "error" in r:
-            print(f"  {v:<10}  ERROR: {r['error'][:50]}")
+            print(f"  {v:<9}  ERROR: {r['error'][:50]}")
         else:
-            acc  = r.get("accuracy", 0)
-            val  = r.get("best_val_acc", 0)
-            t    = r.get("train_time_s", 0) / 60
-            print(f"  {v:<10} {acc:>10.4f} {val:>14.4f} {t:>18.1f}")
+            auc = r.get("auc_macro_ovr")
+            auc_s = f"{auc:>7.4f}" if auc is not None else f"{'n/a':>7}"
+            print(f"  {v:<9} {r.get('accuracy', 0):>9.4f} "
+                  f"{r.get('balanced_accuracy', 0):>9.4f} {auc_s} "
+                  f"{r.get('best_val_score', r.get('best_val_acc', 0)):>9.4f} "
+                  f"{r.get('train_time_s', 0) / 60:>11.1f}")
     print("="*70 + "\n")
 
 

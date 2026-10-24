@@ -152,7 +152,9 @@ def get_medmnist_dataloaders(
     )
     train_loader = DataLoader(
         train_ds, batch_size=cfg.training.batch_size, shuffle=True, drop_last=True,
-        generator=torch.Generator().manual_seed(seed), **loader_kwargs,
+        generator=torch.Generator().manual_seed(seed),
+        # Keep workers alive between epochs (Windows re-spawns them otherwise).
+        persistent_workers=cfg.dataset.num_workers > 0, **loader_kwargs,
     )
     val_loader = DataLoader(
         val_ds, batch_size=cfg.evaluation.batch_size, shuffle=False, **loader_kwargs

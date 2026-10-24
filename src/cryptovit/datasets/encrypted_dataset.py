@@ -264,12 +264,16 @@ def build_encrypted_loaders(
     base_test: Dataset,
     key: str,
     seed: int,
+    base_val: Optional[Dataset] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Train/val/test loaders over encrypted images.
 
-    * Train and validation use the same index split as the plaintext
-      ``get_dataloaders`` (``get_split_indices`` with the same seed), so
-      plaintext and encrypted experiments see exactly the same images.
+    * Without ``base_val``, train and validation use the same index split as
+      the plaintext ``get_dataloaders`` (``get_split_indices`` with the same
+      seed), so plaintext and encrypted experiments see exactly the same
+      images. With ``base_val`` (datasets that ship official splits, such as
+      MedMNIST) ``base_train`` is used whole and ``base_val`` is the
+      validation set.
     * The test set is only the official test split; it is never used for
       checkpoint selection or early stopping.
     * Normalisation statistics are measured on training images only.
@@ -277,9 +281,12 @@ def build_encrypted_loaders(
     ``base_train`` / ``base_test`` return un-transformed PIL images (or uint8
     arrays) and labels.
     """
-    train_idx, val_idx = get_split_indices(
-        len(base_train), cfg.dataset.train_split, seed
-    )
+    if base_val is None:
+        train_idx, val_idx = get_split_indices(
+            len(base_train), cfg.dataset.train_split, seed
+        )
+    else:
+        train_idx, val_idx = list(range(len(base_train))), None
     scheme = cfg.encryption.get("scheme", "v1")
     stats = compute_encrypted_stats(
         base_train, key, train_idx,
@@ -301,10 +308,16 @@ def build_encrypted_loaders(
     train_loader = DataLoader(
         Subset(enc_train, train_idx),
         batch_size=cfg.training.batch_size, shuffle=True, drop_last=True,
-        generator=torch.Generator().manual_seed(seed), **loader_kwargs,
+        generator=torch.Generator().manual_seed(seed),
+        # Keep workers alive between epochs (Windows re-spawns them otherwise).
+        persistent_workers=cfg.dataset.num_workers > 0, **loader_kwargs,
+    )
+    val_dataset = (
+        Subset(enc_train, val_idx) if base_val is None
+        else EncryptedCIFARDataset(base_val, **kwargs)
     )
     val_loader = DataLoader(
-        Subset(enc_train, val_idx),
+        val_dataset,
         batch_size=cfg.evaluation.batch_size, shuffle=False, **loader_kwargs,
     )
     test_loader = DataLoader(

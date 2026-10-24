@@ -168,6 +168,25 @@ def _load_raw_dataset(
     return cls(root=str(root), train=train, transform=transform, download=download)
 
 
+def get_dataset_targets(dataset: Dataset) -> List[int]:
+    """Class labels of a (possibly wrapped) dataset, without loading images.
+
+    Understands ``Subset``, encrypted-dataset wrappers (``base_dataset``) and
+    anything exposing ``targets`` (torchvision CIFAR, ``MedMNISTAdapter``).
+    """
+    if isinstance(dataset, Subset):
+        parent = get_dataset_targets(dataset.dataset)
+        return [parent[i] for i in dataset.indices]
+    if hasattr(dataset, "base_dataset"):
+        return get_dataset_targets(dataset.base_dataset)
+    if hasattr(dataset, "targets"):
+        return [int(t) for t in dataset.targets]
+    raise TypeError(
+        f"Cannot read labels from {type(dataset).__name__}; it needs a "
+        "'targets' attribute, a 'base_dataset', or to be a Subset of one."
+    )
+
+
 def get_split_indices(
     n_total: int, train_split: float, seed: int
 ) -> Tuple[List[int], List[int]]:
@@ -275,6 +294,7 @@ def get_dataloaders(
         pin_memory=pin_memory,
         drop_last=True,
         generator=torch.Generator().manual_seed(seed),
+        persistent_workers=num_workers > 0,
     )
     val_loader = DataLoader(
         val_dataset,
