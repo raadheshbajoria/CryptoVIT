@@ -79,6 +79,68 @@ def test_suspend_freezes_the_whole_tree_and_resume_restarts_it():
             subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
 
 
+def test_paced_pause_follows_the_duty_cycle():
+    pause = _load().paced_pause
+    # duty 0.7 on a 60 s cycle: run 0-42 s, paused 42-60 s, then repeat
+    assert [pause(t, 0.7, 60) for t in (0, 41, 41.9)] == [False, False, False]
+    assert [pause(t, 0.7, 60) for t in (42, 50, 59.9)] == [True, True, True]
+    assert pause(60, 0.7, 60) is False and pause(102, 0.7, 60) is True
+
+
+def test_full_duty_never_pauses():
+    pause = _load().paced_pause
+    assert not any(pause(t, 1.0, 60) for t in range(0, 300, 7))
+
+
+def test_pause_share_matches_the_duty():
+    pause = _load().paced_pause
+    paused = sum(pause(t / 10, 0.7, 60) for t in range(0, 6000))
+    assert paused / 6000 == pytest.approx(0.3, abs=0.01)
+
+
+@pytest.mark.parametrize("duty, cycle", [(0.0, 60), (-0.5, 60), (1.5, 60), (0.7, 0), (0.7, -1)])
+def test_invalid_pacing_arguments(duty, cycle):
+    if duty >= 1.0 and cycle > 0:
+        assert _load().paced_pause(1.0, duty, cycle) is False   # >= 1 means no pacing
+    else:
+        with pytest.raises(ValueError):
+            _load().paced_pause(1.0, duty, cycle)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="uses Windows process suspension")
+def test_pacing_really_freezes_the_job_for_part_of_each_cycle(tmp_path, monkeypatch):
+    import threading
+
+    guard = _load()
+    monkeypatch.setattr(guard, "gpu_temperature", lambda: 50.0)   # never "hot"
+    beat = tmp_path / "beat.txt"
+    code = (
+        "import time\n"
+        f"f = open(r'{beat}', 'a', buffering=1)\n"
+        "while True:\n"
+        "    f.write(repr(time.time()) + '\\n'); time.sleep(0.05)\n"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", code])
+    result = {}
+    thread = threading.Thread(
+        target=lambda: result.update(rc=guard.run(proc.pid, 80, 70, 0.1, duty=0.5, cycle=2.0)),
+        daemon=True,
+    )
+    try:
+        time.sleep(1.0)
+        thread.start()
+        time.sleep(7.0)
+    finally:
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/F"], capture_output=True)
+        thread.join(timeout=15)
+
+    stamps = [float(x) for x in beat.read_text().split()]
+    gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+    assert len(stamps) > 40
+    assert max(gaps) >= 0.7          # frozen for about 1 s of each 2 s cycle
+    assert result.get("rc") == 0 and not thread.is_alive()
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="uses Windows process APIs")
 def test_process_alive_reports_exit():
     guard = _load()

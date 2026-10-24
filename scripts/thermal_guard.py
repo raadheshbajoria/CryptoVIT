@@ -35,6 +35,22 @@ logger = logging.getLogger("thermal_guard")
 # Decision logic (pure, unit-tested)
 # ---------------------------------------------------------------------------
 
+def paced_pause(elapsed: float, duty: float, cycle: float) -> bool:
+    """True during the paused part of a duty cycle.
+
+    With ``duty=0.7`` and ``cycle=60`` the job runs for the first 42 s of every
+    minute and is paused for the last 18 s, which spreads the load evenly
+    instead of running flat out. ``duty >= 1`` never pauses.
+    """
+    if duty >= 1.0:
+        return False
+    if not 0.0 < duty < 1.0:
+        raise ValueError(f"duty must be in (0, 1], got {duty}.")
+    if cycle <= 0:
+        raise ValueError(f"cycle must be positive, got {cycle}.")
+    return (elapsed % cycle) >= duty * cycle
+
+
 class ThermalGovernor:
     """Hysteresis controller: suspend at ``high``, resume at ``low`` or below."""
 
@@ -146,13 +162,38 @@ def gpu_temperature() -> Optional[float]:
 # Main loop
 # ---------------------------------------------------------------------------
 
-def run(pid: int, high: float, low: float, interval: float) -> int:
+def run(pid: int, high: float, low: float, interval: float,
+        duty: float = 1.0, cycle: float = 60.0) -> int:
+    """Guard ``pid``: temperature rule (high/low) plus optional duty-cycle pacing.
+
+    The job is frozen whenever *either* the temperature rule or the pacing
+    cycle asks for it. Pacing pauses are not logged one by one (there would be
+    hundreds); a summary line is written every 10 minutes instead.
+    """
+    paced_pause(0.0, duty, cycle)          # validate the arguments early
     governor = ThermalGovernor(high, low)
     suspended_pids: Set[int] = set()
-    paused_since = 0.0
-    total_paused = 0.0
-    pauses = 0
-    logger.info("Watching PID %d: suspend at >= %.0f C, resume at <= %.0f C", pid, high, low)
+    frozen = False
+    frozen_since = 0.0
+    total_frozen = 0.0
+    thermal_pauses = 0
+    start = last_report = time.time()
+    temp: Optional[float] = None
+
+    logger.info("Watching PID %d: suspend at >= %.0f C, resume at <= %.0f C, "
+                "duty %.0f%% per %.0f s cycle", pid, high, low, duty * 100, cycle)
+    # If an earlier guard was killed while the job was frozen, start it again.
+    resume_tree(pid, set())
+
+    def set_frozen(want: bool) -> None:
+        nonlocal frozen, frozen_since, total_frozen, suspended_pids
+        if want and not frozen:
+            suspended_pids = suspend_tree(pid)
+            frozen, frozen_since = True, time.time()
+        elif not want and frozen:
+            resume_tree(pid, suspended_pids)
+            total_frozen += time.time() - frozen_since
+            frozen = False
 
     try:
         while process_alive(pid):
@@ -162,27 +203,30 @@ def run(pid: int, high: float, low: float, interval: float) -> int:
             else:
                 action = governor.update(temp)
                 if action == "suspend":
-                    suspended_pids = suspend_tree(pid)
-                    paused_since = time.time()
-                    pauses += 1
-                    logger.info("%.0f C reached: SUSPENDED %d process(es) (pause #%d)",
-                                temp, len(suspended_pids), pauses)
+                    thermal_pauses += 1
+                    logger.info("%.0f C reached: thermal pause #%d (until %.0f C)",
+                                temp, thermal_pauses, low)
                 elif action == "resume":
-                    resumed = resume_tree(pid, suspended_pids)
-                    waited = time.time() - paused_since
-                    total_paused += waited
-                    logger.info("%.0f C: RESUMED %d process(es) after %.0f s paused "
-                                "(total paused %.1f min)", temp, len(resumed), waited,
-                                total_paused / 60)
+                    logger.info("%.0f C: cooled to the resume temperature", temp)
+
+            now = time.time()
+            set_frozen(governor.suspended or paced_pause(now - start, duty, cycle))
+
+            if now - last_report >= 600:
+                held = total_frozen + (now - frozen_since if frozen else 0.0)
+                logger.info("Status: GPU %s C | frozen %.0f%% of the last %.0f min "
+                            "(thermal pauses so far: %d)",
+                            "?" if temp is None else f"{temp:.0f}",
+                            100 * held / (now - start), (now - start) / 60, thermal_pauses)
+                last_report = now
             time.sleep(interval)
     except KeyboardInterrupt:
         pass
     finally:
-        if governor.suspended:     # never leave the job frozen when the guard stops
+        if frozen:     # never leave the job frozen when the guard stops
             resume_tree(pid, suspended_pids)
             logger.info("Guard stopping: resumed the job.")
-    logger.info("Job has ended (pauses: %d, total paused %.1f min). Guard exiting.",
-                pauses, total_paused / 60)
+    logger.info("Job has ended (thermal pauses: %d). Guard exiting.", thermal_pauses)
     return 0
 
 
@@ -192,6 +236,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--high", type=float, default=80.0, help="suspend at this temperature (C)")
     p.add_argument("--low", type=float, default=70.0, help="resume at or below this (C)")
     p.add_argument("--interval", type=float, default=10.0, help="seconds between readings")
+    p.add_argument("--duty", type=float, default=1.0,
+                   help="share of time the job may run, e.g. 0.7 (default 1.0 = no pacing)")
+    p.add_argument("--cycle", type=float, default=60.0,
+                   help="length of one duty cycle in seconds (default 60)")
     p.add_argument("--log", default=None, help="also write the log to this file")
     args = p.parse_args(argv)
 
@@ -201,7 +249,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         handlers.append(logging.FileHandler(args.log, encoding="utf-8"))
     logging.basicConfig(level=logging.INFO, handlers=handlers,
                         format="%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    return run(args.pid, args.high, args.low, args.interval)
+    return run(args.pid, args.high, args.low, args.interval, args.duty, args.cycle)
 
 
 if __name__ == "__main__":
