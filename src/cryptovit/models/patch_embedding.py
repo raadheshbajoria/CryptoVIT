@@ -76,15 +76,19 @@ class CryptoPatchEmbedding(nn.Module):
 
     Architecture
     ------------
-    1. A small 3-layer convolutional front-end processes each patch locally.
-       Using ``kernel_size=3`` captures local structure while remaining
-       agnostic to global spatial layout (which is disrupted by encryption).
+    1. A two-layer convolutional front-end (3x3 conv + BatchNorm + GELU, twice)
+       runs over the *whole* image at full resolution, so the receptive field
+       of a feature near a patch border extends into the neighbouring patch.
+       Its memory use therefore scales with ``hidden_dim * H * W`` per image.
     2. A final Conv2d with stride=patch_size performs the linear projection
        (same as the standard embedding).
 
-    Compared to ``StandardPatchEmbedding``, this adds ~0.1M parameters
-    and allows the model to learn encryption-domain features before
-    projecting into the token space.
+    Compared to ``StandardPatchEmbedding``, this adds ~3.04M parameters at
+    ``hidden_dim=64`` (the 16x16 projection now reads 64 channels instead of
+    3), versus ~0.15M for the standard embedding. Any accuracy gain over the
+    standard embedding must be read with that capacity difference in mind.
+    Whether it helps on encrypted images is an empirical question tested by
+    the ablation study.
 
     Parameters
     ----------

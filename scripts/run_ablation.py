@@ -59,6 +59,7 @@ from cryptovit.models.patch_embedding import CryptoPatchEmbedding
 from cryptovit.models.positional_encoding import KeyAwarePositionalEncoding
 from cryptovit.models.vit import VisionTransformer
 from cryptovit.training import Trainer
+from cryptovit.training.trainer import split_batch_for_memory
 from cryptovit.utils.config import get_device, load_config
 from cryptovit.utils.logging_setup import setup_logging
 from cryptovit.utils.seed import set_seed
@@ -69,6 +70,28 @@ logger = logging.getLogger(__name__)
 ENCRYPTION_KEY = "CryptoViT_Research_Key_2025"
 KEY_EMBED_DIM = 256
 ALL_VARIANTS = ["A", "B", "C", "D"]
+
+# CryptoPatchEmbedding runs 3x3 convolutions on the full 224x224 image. Measured
+# on the 4 GB RTX 3050 with AMP: batch 32 -> 1.75 GB (0.15 s/step); batch 64 ->
+# 3.4 GB and batch 128 -> 6.7 GB, which spill into shared memory and run 10-70x
+# slower. C and D therefore use micro-batches of 32 with gradient accumulation,
+# keeping the effective batch size identical to A and B.
+CRYPTO_EMBED_MAX_MICRO_BATCH = 32
+CRYPTO_EMBED_VARIANTS = ("C", "D")
+
+
+def _variant_cfg(variant: str, cfg):
+    """Return a config copy with memory-safe batching for the variant."""
+    cfg = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
+    if variant in CRYPTO_EMBED_VARIANTS:
+        micro, accum = split_batch_for_memory(
+            cfg.training.batch_size,
+            cfg.training.accumulation_steps,
+            CRYPTO_EMBED_MAX_MICRO_BATCH,
+        )
+        cfg.training.batch_size = micro
+        cfg.training.accumulation_steps = accum
+    return cfg
 
 
 def _build_variant(name: str, cfg, device) -> nn.Module:
@@ -132,6 +155,12 @@ def run_variant(
 ) -> dict:
     """Train and evaluate one ablation variant."""
     logger.info("\n%s\nVariant %s\n%s", "="*50, variant, "="*50)
+    cfg = _variant_cfg(variant, cfg)
+    logger.info(
+        "Batching: micro-batch=%d x accumulation=%d (effective %d)",
+        cfg.training.batch_size, cfg.training.accumulation_steps,
+        cfg.training.batch_size * cfg.training.accumulation_steps,
+    )
     set_seed(cfg.project.seed)
 
     data_root = PROJECT_ROOT / cfg.paths.raw_dir

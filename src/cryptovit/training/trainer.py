@@ -61,6 +61,28 @@ def _cosine_schedule_with_warmup(
     return LambdaLR(optimizer, lr_lambda)
 
 
+def split_batch_for_memory(
+    batch_size: int, accumulation_steps: int, max_micro_batch: int
+) -> Tuple[int, int]:
+    """Return ``(micro_batch, accumulation_steps)`` with the same effective batch.
+
+    Used when a model does not fit in GPU memory at the configured batch
+    size: the loader yields ``micro_batch`` images and gradients are
+    accumulated so that ``micro_batch * accumulation_steps`` equals the
+    original ``batch_size * accumulation_steps``.
+    """
+    if batch_size <= 0 or accumulation_steps <= 0 or max_micro_batch <= 0:
+        raise ValueError("batch_size, accumulation_steps and max_micro_batch must be > 0")
+    if batch_size <= max_micro_batch:
+        return batch_size, accumulation_steps
+    if batch_size % max_micro_batch != 0:
+        raise ValueError(
+            f"batch_size ({batch_size}) must be a multiple of max_micro_batch "
+            f"({max_micro_batch}) to keep the effective batch size unchanged."
+        )
+    return max_micro_batch, accumulation_steps * (batch_size // max_micro_batch)
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint helpers
 # ---------------------------------------------------------------------------
