@@ -39,15 +39,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
+from omegaconf import DictConfig
 from PIL import Image
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms
 from tqdm import tqdm
 
+from cryptovit.datasets.cifar_dataset import get_split_indices
 from cryptovit.encryption import encrypt
 
 logger = logging.getLogger(__name__)
@@ -199,6 +201,109 @@ def generate_encrypted_dataset(
     np.save(str(save_dir / "images.npy"), images)
     np.save(str(save_dir / "labels.npy"), labels)
     logger.info("Saved encrypted dataset to %s.", save_dir)
+
+
+# ---------------------------------------------------------------------------
+# Encrypted data loaders (shared split, no test-set leakage)
+# ---------------------------------------------------------------------------
+
+def compute_encrypted_stats(
+    base_dataset: Dataset,
+    key: str,
+    indices: Sequence[int],
+    n_samples: int = 2000,
+    transient_steps: int = 1000,
+) -> Dict[str, List[float]]:
+    """Per-channel mean/std (0-1 scale) of encrypted images.
+
+    Encrypted images are close to uniform noise, so the plaintext CIFAR
+    statistics do not apply. Statistics must come from training images only.
+    """
+    chosen = list(indices)[:n_samples]
+    if not chosen:
+        raise ValueError("indices must contain at least one sample.")
+    total = np.zeros(3, dtype=np.float64)
+    total_sq = np.zeros(3, dtype=np.float64)
+    count = 0
+    for i in chosen:
+        img, _ = base_dataset[i]
+        enc, _ = encrypt(_pil_to_uint8(img), key, transient_steps)
+        px = enc.reshape(-1, enc.shape[-1]).astype(np.float64) / 255.0
+        total += px.sum(axis=0)
+        total_sq += (px ** 2).sum(axis=0)
+        count += px.shape[0]
+    mean = total / count
+    std = np.sqrt(np.maximum(total_sq / count - mean ** 2, 1e-12))
+    return {"mean": mean.tolist(), "std": std.tolist()}
+
+
+def build_encrypted_transform(
+    image_size: int, mean: Sequence[float], std: Sequence[float]
+) -> transforms.Compose:
+    """Deterministic transform for encrypted images.
+
+    No random crop or flip: those operations on ciphertext do not correspond
+    to any plaintext augmentation and only inject noise.
+    """
+    return transforms.Compose([
+        transforms.Resize((image_size, image_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=list(mean), std=list(std)),
+    ])
+
+
+def build_encrypted_loaders(
+    cfg: DictConfig,
+    base_train: Dataset,
+    base_test: Dataset,
+    key: str,
+    seed: int,
+) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """Train/val/test loaders over encrypted images.
+
+    * Train and validation use the same index split as the plaintext
+      ``get_dataloaders`` (``get_split_indices`` with the same seed), so
+      plaintext and encrypted experiments see exactly the same images.
+    * The test set is only the official test split; it is never used for
+      checkpoint selection or early stopping.
+    * Normalisation statistics are measured on training images only.
+
+    ``base_train`` / ``base_test`` return un-transformed PIL images (or uint8
+    arrays) and labels.
+    """
+    train_idx, val_idx = get_split_indices(
+        len(base_train), cfg.dataset.train_split, seed
+    )
+    stats = compute_encrypted_stats(
+        base_train, key, train_idx, transient_steps=cfg.encryption.transient_steps
+    )
+    transform = build_encrypted_transform(
+        cfg.dataset.image_size, stats["mean"], stats["std"]
+    )
+    kwargs = dict(
+        key=key, mode="online", transform=transform,
+        transient_steps=cfg.encryption.transient_steps,
+    )
+    enc_train = EncryptedCIFARDataset(base_train, **kwargs)
+    enc_test = EncryptedCIFARDataset(base_test, **kwargs)
+
+    loader_kwargs = dict(
+        num_workers=cfg.dataset.num_workers, pin_memory=cfg.dataset.pin_memory
+    )
+    train_loader = DataLoader(
+        Subset(enc_train, train_idx),
+        batch_size=cfg.training.batch_size, shuffle=True, drop_last=True,
+        generator=torch.Generator().manual_seed(seed), **loader_kwargs,
+    )
+    val_loader = DataLoader(
+        Subset(enc_train, val_idx),
+        batch_size=cfg.evaluation.batch_size, shuffle=False, **loader_kwargs,
+    )
+    test_loader = DataLoader(
+        enc_test, batch_size=cfg.evaluation.batch_size, shuffle=False,
+        **loader_kwargs,
+    )
+    return train_loader, val_loader, test_loader
 
 
 # ---------------------------------------------------------------------------

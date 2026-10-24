@@ -168,6 +168,22 @@ def _load_raw_dataset(
     return cls(root=str(root), train=train, transform=transform, download=download)
 
 
+def get_split_indices(
+    n_total: int, train_split: float, seed: int
+) -> Tuple[List[int], List[int]]:
+    """Deterministic train/validation index split of the official training set.
+
+    Shared by the plaintext and encrypted pipelines so that every experiment
+    variant trains and validates on exactly the same images.
+    """
+    n_train = int(n_total * train_split)
+    generator = torch.Generator().manual_seed(seed)
+    train_idx, val_idx = random_split(
+        range(n_total), [n_train, n_total - n_train], generator=generator
+    )
+    return list(train_idx), list(val_idx)
+
+
 def get_dataloaders(
     cfg: DictConfig,
     data_root: Optional[Path] = None,
@@ -231,17 +247,10 @@ def get_dataloaders(
     )
 
     # --- Deterministic train/val split ---
-    n_total = len(full_train)
-    n_train = int(n_total * train_split)
-    n_val = n_total - n_train
-
-    generator = torch.Generator().manual_seed(seed)
-    train_indices, val_indices = random_split(
-        range(n_total), [n_train, n_val], generator=generator
-    )
+    train_indices, val_indices = get_split_indices(len(full_train), train_split, seed)
     # Use the index lists to create Subsets on the *correct* transform datasets
-    train_dataset = Subset(full_train, list(train_indices))
-    val_dataset = Subset(full_train_eval, list(val_indices))
+    train_dataset = Subset(full_train, train_indices)
+    val_dataset = Subset(full_train_eval, val_indices)
 
     logger.info(
         "Dataset '%s' | train=%d  val=%d  test=%d",

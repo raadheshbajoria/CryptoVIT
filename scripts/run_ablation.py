@@ -2,23 +2,34 @@
 """
 scripts/run_ablation.py
 =========================
-Phase 12 — Ablation study: train and evaluate 5 model variants.
+Phase 12 — Ablation study: train and evaluate 4 model variants.
 
 Variants
 --------
 A — Standard ViT + plaintext images
 B — Standard ViT + encrypted images (standard patch embedding)
 C — Standard ViT + encrypted images + CryptoPatchEmbedding
-D — Standard ViT + encrypted images + CryptoPatchEmbedding + KeyAwarePE
-E — Full CryptoViT (D + increased depth / fine-tuned HP)
+D — CryptoViT: C + KeyAwarePositionalEncoding, trained and evaluated with the
+    key embedding derived from the encryption key
 
-All variants use the same training config (same LR, epochs, batch size).
+Protocol
+--------
+* All variants use the same seeded train/validation split of the official
+  training set (``get_split_indices``) and the same training config.
+* Checkpoints and early stopping use the validation split only. The official
+  test split is used once per variant, after training, for the final score.
+* Encrypted variants use no random crop/flip (they are meaningless on
+  ciphertext) and normalise with statistics of the encrypted training images.
+* C differs from D only by the key-aware positional offset, so D vs C
+  isolates what the key embedding adds.
+
 Results are saved to experiments/ablation/ablation_results.json.
 
 Usage
 -----
     python scripts/run_ablation.py
     python scripts/run_ablation.py training.epochs=30
+    python scripts/run_ablation.py ablation.variants=A,D
 """
 
 from __future__ import annotations
@@ -34,12 +45,18 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 import torch
 import torch.nn as nn
+from omegaconf import OmegaConf
+from torchvision import datasets
 
-from cryptovit.datasets import get_class_names, get_dataloaders
-from cryptovit.datasets.encrypted_dataset import EncryptedCIFARDataset
+from cryptovit.datasets import (
+    build_encrypted_loaders,
+    get_class_names,
+    get_dataloaders,
+)
 from cryptovit.evaluation import evaluate_model, print_metrics_table
 from cryptovit.models.cryptovit import CryptoViT
 from cryptovit.models.patch_embedding import CryptoPatchEmbedding
+from cryptovit.models.positional_encoding import KeyAwarePositionalEncoding
 from cryptovit.models.vit import VisionTransformer
 from cryptovit.training import Trainer
 from cryptovit.utils.config import get_device, load_config
@@ -50,6 +67,8 @@ logger = logging.getLogger(__name__)
 
 # Encryption key for ablation study
 ENCRYPTION_KEY = "CryptoViT_Research_Key_2025"
+KEY_EMBED_DIM = 256
+ALL_VARIANTS = ["A", "B", "C", "D"]
 
 
 def _build_variant(name: str, cfg, device) -> nn.Module:
@@ -80,56 +99,32 @@ def _build_variant(name: str, cfg, device) -> nn.Module:
             patch_embedding_cls=CryptoPatchEmbedding,
         )
 
-    elif name in ("D", "E"):
-        # Full CryptoViT (CryptoPatchEmbedding + KeyAwarePE)
+    elif name == "D":
+        # CryptoViT: CryptoPatchEmbedding + KeyAwarePositionalEncoding
         return CryptoViT(
             **common,
             hidden_dim=64,
-            key_embed_dim=256,
+            key_embed_dim=KEY_EMBED_DIM,
         )
 
-    raise ValueError(f"Unknown variant: {name}")
+    raise ValueError(f"Unknown variant: {name}. Choose from A, B, C, D.")
 
 
 def _get_loaders(variant: str, cfg, data_root: Path):
-    """Return (train_loader, val_loader, test_loader) for a variant."""
-    train_l, val_l, test_l = get_dataloaders(
-        cfg, data_root=data_root, seed=cfg.project.seed
-    )
+    """Return (train_loader, val_loader, test_loader) for a variant.
 
+    Every variant uses the same seeded train/val split and the official test
+    split; only the image representation (plaintext vs encrypted) differs.
+    """
     if variant == "A":
-        # Plaintext — use standard loaders
-        return train_l, val_l, test_l
-
-    # Variants B–E: use encrypted dataset (online mode for now)
-    # For full training, switch to precomputed mode after generating data
-    from torchvision import datasets
-    from torch.utils.data import DataLoader
-    from cryptovit.datasets import build_eval_transform, build_train_transform
+        return get_dataloaders(cfg, data_root=data_root, seed=cfg.project.seed)
 
     cls = datasets.CIFAR10 if cfg.dataset.name == "cifar10" else datasets.CIFAR100
     base_train = cls(root=str(data_root), train=True, transform=None, download=False)
     base_test  = cls(root=str(data_root), train=False, transform=None, download=False)
-
-    train_transform = build_train_transform(cfg)
-    eval_transform  = build_eval_transform(cfg)
-
-    enc_train = EncryptedCIFARDataset(base_train, ENCRYPTION_KEY, mode="online",
-                                       transform=train_transform)
-    enc_test  = EncryptedCIFARDataset(base_test,  ENCRYPTION_KEY, mode="online",
-                                       transform=eval_transform)
-
-    enc_train_l = DataLoader(
-        enc_train, batch_size=cfg.training.batch_size, shuffle=True,
-        num_workers=cfg.dataset.num_workers, pin_memory=cfg.dataset.pin_memory,
-        drop_last=True,
+    return build_encrypted_loaders(
+        cfg, base_train, base_test, ENCRYPTION_KEY, seed=cfg.project.seed
     )
-    enc_test_l = DataLoader(
-        enc_test, batch_size=cfg.evaluation.batch_size, shuffle=False,
-        num_workers=cfg.dataset.num_workers, pin_memory=cfg.dataset.pin_memory,
-    )
-    # Use validation loader from plaintext split (same indices, encrypted)
-    return enc_train_l, enc_test_l, enc_test_l
 
 
 def run_variant(
@@ -143,21 +138,29 @@ def run_variant(
     train_l, val_l, test_l = _get_loaders(variant, cfg, data_root)
     model = _build_variant(variant, cfg, device)
 
+    # Variant D is trained and evaluated with the key embedding of the
+    # encryption key; no other variant receives one.
+    key_embedding = (
+        KeyAwarePositionalEncoding.key_to_embedding(ENCRYPTION_KEY, KEY_EMBED_DIM)
+        if variant == "D" else None
+    )
+
     var_dir = exp_dir / f"variant_{variant}"
-    trainer = Trainer(model, cfg, device, var_dir)
+    trainer = Trainer(model, cfg, device, var_dir, key_embedding=key_embedding)
     t0 = time.time()
     history = trainer.fit(train_l, val_l)
     train_time = time.time() - t0
 
     trainer.load_best_checkpoint()
 
-    # Forward with key embedding for variants D/E
+    # Test set is touched exactly once, after model selection on validation.
     use_amp = cfg.training.mixed_precision and device.type == "cuda"
     results = evaluate_model(
         model, test_l, device,
         use_amp=use_amp,
         class_names=get_class_names(cfg.dataset.name),
         num_classes=cfg.dataset.num_classes,
+        key_embedding=key_embedding,
     )
     print_metrics_table(results)
 
@@ -177,8 +180,14 @@ def main() -> None:
     exp_dir = PROJECT_ROOT / cfg.paths.experiments_dir / "ablation"
     exp_dir.mkdir(parents=True, exist_ok=True)
 
+    requested = str(OmegaConf.select(cfg, "ablation.variants", default=",".join(ALL_VARIANTS)))
+    variants = [v.strip().upper() for v in requested.split(",") if v.strip()]
+    unknown = [v for v in variants if v not in ALL_VARIANTS]
+    if unknown:
+        raise SystemExit(f"Unknown variants {unknown}; choose from {ALL_VARIANTS}.")
+
     all_results = {}
-    for variant in ["A", "B", "C", "D", "E"]:
+    for variant in variants:
         try:
             results = run_variant(variant, cfg, device, exp_dir)
             all_results[variant] = results
