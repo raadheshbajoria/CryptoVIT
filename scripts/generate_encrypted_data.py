@@ -55,10 +55,13 @@ def main() -> None:
     key_hash = hashlib.sha256(key.encode()).hexdigest()[:8]
 
     data_root = PROJECT_ROOT / cfg.paths.raw_dir
-    enc_root  = PROJECT_ROOT / "data" / "encrypted" / f"{dataset_name}_{key_hash}"
+    scheme = cfg.encryption.get("scheme", "v1")
+    suffix = "" if scheme == "v1" else f"_{scheme}"   # v1 keeps its original path
+    enc_root  = PROJECT_ROOT / "data" / "encrypted" / f"{dataset_name}_{key_hash}{suffix}"
 
     logger.info("Dataset    : %s", dataset_name)
     logger.info("Key hash   : %s…", key_hash)
+    logger.info("Scheme     : %s", scheme)
     logger.info("Output dir : %s", enc_root)
 
     cls = datasets.CIFAR10 if dataset_name == "cifar10" else datasets.CIFAR100
@@ -66,12 +69,12 @@ def main() -> None:
     # Train split
     train_ds = cls(root=str(data_root), train=True, transform=None, download=True)
     logger.info("Encrypting TRAIN set (%d images) …", len(train_ds))
-    generate_encrypted_dataset(train_ds, key, enc_root / "train")
+    generate_encrypted_dataset(train_ds, key, enc_root / "train", scheme=scheme)
 
     # Test split
     test_ds = cls(root=str(data_root), train=False, transform=None, download=True)
     logger.info("Encrypting TEST set (%d images) …", len(test_ds))
-    generate_encrypted_dataset(test_ds, key, enc_root / "test")
+    generate_encrypted_dataset(test_ds, key, enc_root / "test", scheme=scheme)
 
     logger.info("Done! Encrypted dataset saved to %s", enc_root)
 

@@ -77,6 +77,20 @@ class KeyGenerator:
         """
         return self._perm_sys.generate_indices(n)
 
+    def channel_permutations(self, n: int, channels: int) -> np.ndarray:
+        """Independent uniform permutations of [0, n), one per channel.
+
+        Used by encryption scheme ``"v2"``; each channel draws its own
+        permutation from the continuing permutation stream.
+
+        Returns
+        -------
+        (channels, n) int64 array
+        """
+        return np.stack(
+            [self._perm_sys.generate_permutation(n) for _ in range(channels)]
+        )
+
     def inverse_permutation(self, perm: np.ndarray) -> np.ndarray:
         """Return the inverse of a permutation array.
 
@@ -110,6 +124,17 @@ class KeyGenerator:
         (n,) uint8 array
         """
         return self._diff_sys.generate_bytes(n)
+
+    def channel_keystreams(self, n: int, channels: int) -> np.ndarray:
+        """Independent uint8 key-streams, one per channel (scheme ``"v2"``).
+
+        Returns
+        -------
+        (n, channels) uint8 array — column ``c`` is the key-stream of channel c
+        """
+        return np.stack(
+            [self._diff_sys.generate_bytes(n) for _ in range(channels)], axis=1
+        )
 
     def dna_rule_sequence(self, n: int) -> np.ndarray:
         """Return a sequence of DNA rule indices in [0, 7].

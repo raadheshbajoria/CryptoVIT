@@ -70,6 +70,10 @@ model:
 encryption:
   enabled: false
   system: hyperchaotic_4d
+  # v1: one permutation + keystream shared by all colour channels (default,
+  #     matches data encrypted before schemes existed)
+  # v2: independent uniform permutation + keystream per channel
+  scheme: v1
   transient_steps: 1000
   use_pixel_permutation: true
   use_patch_permutation: true

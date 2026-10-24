@@ -223,6 +223,39 @@ class HyperchaosSystem:
         frac = np.abs(raw) % 1.0       # in [0, 1)
         return (frac * 256).astype(np.uint8)
 
+    def generate_uniform(self, n: int) -> np.ndarray:
+        """Generate ``n`` values in [0, 1) by extracting low-order digits.
+
+        Consecutive x-samples of a continuous trajectory are strongly
+        correlated, so their ranks (as used by ``generate_indices``) are not
+        uniformly random. Multiplying by 1e6 and keeping the fractional part
+        discards the slowly varying leading digits and keeps the
+        highly sensitive trailing ones, which are far less correlated.
+
+        Returns
+        -------
+        (n,) float64 array in [0, 1)
+        """
+        return (np.abs(self.generate(n)) * 1e6) % 1.0
+
+    def generate_permutation(self, n: int) -> np.ndarray:
+        """Chaos-driven Fisher-Yates shuffle: a uniform permutation of [0, n).
+
+        Unlike ``generate_indices`` (argsort of a smooth trajectory), each
+        swap position is drawn from ``generate_uniform``, so the permutation
+        is close to uniformly random.
+
+        Returns
+        -------
+        (n,) int64 array — a permutation of [0, n)
+        """
+        u = self.generate_uniform(n)
+        perm = np.arange(n, dtype=np.int64)
+        for i in range(n - 1, 0, -1):
+            j = int(u[i] * (i + 1))
+            perm[i], perm[j] = perm[j], perm[i]
+        return perm
+
     def generate_indices(self, n: int) -> np.ndarray:
         """Generate a chaotic permutation of indices [0, n).
 

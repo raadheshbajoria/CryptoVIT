@@ -36,8 +36,10 @@ def permute_image(
     ----------
     image : (H, W, C) or (H, W) uint8 numpy array
         Input image (values 0–255).
-    perm : (H * W,) int array
-        Permutation of [0, H*W) used to reorder pixels within each channel.
+    perm : (H * W,) or (C, H * W) int array
+        Permutation of [0, H*W). A 1-D array is applied to every channel; a
+        2-D array applies row ``c`` to channel ``c`` (independent per-channel
+        permutations, encryption scheme ``"v2"``).
 
     Returns
     -------
@@ -45,21 +47,16 @@ def permute_image(
     """
     _check_uint8(image)
     H, W = image.shape[:2]
-    n = H * W
-    if len(perm) != n:
-        raise ValueError(
-            f"Permutation length {len(perm)} does not match image size {n}."
-        )
+    C = 1 if image.ndim == 2 else image.shape[2]
+    perms = _channel_perms(perm, H * W, C)
 
     if image.ndim == 2:
-        flat = image.reshape(-1)
-        return flat[perm].reshape(H, W)
+        return image.reshape(-1)[perms[0]].reshape(H, W)
 
-    C = image.shape[2]
     result = np.empty_like(image)
     for c in range(C):
         flat = image[:, :, c].reshape(-1)
-        result[:, :, c] = flat[perm].reshape(H, W)
+        result[:, :, c] = flat[perms[c]].reshape(H, W)
     return result
 
 
@@ -73,8 +70,8 @@ def inverse_permute_image(
     ----------
     scrambled : (H, W, C) or (H, W) uint8 numpy array
         Permuted (scrambled) image.
-    perm : (H * W,) int array
-        The *same* permutation used during encryption.
+    perm : (H * W,) or (C, H * W) int array
+        The *same* permutation(s) used during encryption.
 
     Returns
     -------
@@ -83,24 +80,21 @@ def inverse_permute_image(
     _check_uint8(scrambled)
     H, W = scrambled.shape[:2]
     n = H * W
-    if len(perm) != n:
-        raise ValueError(
-            f"Permutation length {len(perm)} does not match image size {n}."
-        )
+    C = 1 if scrambled.ndim == 2 else scrambled.shape[2]
+    perms = _channel_perms(perm, n, C)
 
-    # Compute inverse permutation
-    inv_perm = np.empty(n, dtype=perm.dtype)
-    inv_perm[perm] = np.arange(n, dtype=perm.dtype)
+    def invert(p: np.ndarray) -> np.ndarray:
+        inv = np.empty(n, dtype=p.dtype)
+        inv[p] = np.arange(n, dtype=p.dtype)
+        return inv
 
     if scrambled.ndim == 2:
-        flat = scrambled.reshape(-1)
-        return flat[inv_perm].reshape(H, W)
+        return scrambled.reshape(-1)[invert(perms[0])].reshape(H, W)
 
-    C = scrambled.shape[2]
     result = np.empty_like(scrambled)
     for c in range(C):
         flat = scrambled[:, :, c].reshape(-1)
-        result[:, :, c] = flat[inv_perm].reshape(H, W)
+        result[:, :, c] = flat[invert(perms[c])].reshape(H, W)
     return result
 
 
@@ -166,6 +160,28 @@ def inverse_permute_blocks(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+def _channel_perms(perm: np.ndarray, n: int, channels: int) -> list:
+    """Normalise ``perm`` to one length-``n`` permutation per channel."""
+    perm = np.asarray(perm)
+    if perm.ndim == 1:
+        rows = [perm] * channels
+    elif perm.ndim == 2:
+        if perm.shape[0] != channels:
+            raise ValueError(
+                f"Got {perm.shape[0]} per-channel permutations for an image "
+                f"with {channels} channel(s)."
+            )
+        rows = list(perm)
+    else:
+        raise ValueError(f"perm must be 1-D or 2-D, got {perm.ndim}-D.")
+    for row in rows:
+        if len(row) != n:
+            raise ValueError(
+                f"Permutation length {len(row)} does not match image size {n}."
+            )
+    return rows
+
 
 def _check_uint8(image: np.ndarray) -> None:
     if image.dtype != np.uint8:

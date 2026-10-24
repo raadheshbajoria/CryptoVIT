@@ -113,3 +113,21 @@ def test_encrypted_transform_has_no_random_ops():
     t = build_encrypted_transform(32, [0.5] * 3, [0.29] * 3)
     names = [type(op).__name__ for op in t.transforms]
     assert names == ["Resize", "ToTensor", "Normalize"]
+
+
+def test_scheme_option_changes_the_encrypted_images():
+    base_overrides = [
+        "dataset.image_size=32", "dataset.num_workers=0",
+        "dataset.pin_memory=false", "encryption.transient_steps=50",
+        "training.batch_size=8", "evaluation.batch_size=8",
+        "dataset.train_split=0.8", "model.image_size=32", "model.patch_size=8",
+    ]
+    first = {}
+    for scheme in ("v1", "v2"):
+        cfg = load_config(overrides=base_overrides + [f"encryption.scheme={scheme}"])
+        train_l, _, _ = build_encrypted_loaders(
+            cfg, FakeCifar(20, seed=1), FakeCifar(8, seed=2), "unit-test-key", seed=7
+        )
+        first[scheme] = train_l.dataset.dataset[0][0]
+    assert first["v1"].shape == first["v2"].shape
+    assert not torch.equal(first["v1"], first["v2"])

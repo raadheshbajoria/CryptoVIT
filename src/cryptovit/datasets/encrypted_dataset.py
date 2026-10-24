@@ -89,6 +89,7 @@ class EncryptedCIFARDataset(Dataset):
         encrypted_dir: Optional[Path] = None,
         transform: Optional[Callable] = None,
         transient_steps: int = 1000,
+        scheme: str = "v1",
     ):
         assert mode in ("online", "precomputed"), (
             f"mode must be 'online' or 'precomputed', got '{mode}'"
@@ -99,6 +100,7 @@ class EncryptedCIFARDataset(Dataset):
         self.encrypted_dir = Path(encrypted_dir) if encrypted_dir else None
         self.transform = transform
         self.transient_steps = transient_steps
+        self.scheme = scheme
 
         if mode == "precomputed":
             if self.encrypted_dir is None:
@@ -118,7 +120,9 @@ class EncryptedCIFARDataset(Dataset):
         if self.mode == "online":
             img_pil, label = self.base_dataset[idx]
             img_np = _pil_to_uint8(img_pil)
-            enc_np, _ = encrypt(img_np, self.key, self.transient_steps)
+            enc_np, _ = encrypt(
+                img_np, self.key, self.transient_steps, scheme=self.scheme
+            )
         else:
             enc_np = self._encrypted_images[idx]
             label = int(self._labels[idx])
@@ -161,6 +165,7 @@ def generate_encrypted_dataset(
     key: str,
     save_dir: Path,
     transient_steps: int = 1000,
+    scheme: str = "v1",
 ) -> None:
     """Generate and save an encrypted version of a dataset.
 
@@ -186,7 +191,7 @@ def generate_encrypted_dataset(
     # Get shape from first sample
     img0, _ = base_dataset[0]
     img0_np = _pil_to_uint8(img0)
-    enc0, _ = encrypt(img0_np, key, transient_steps)
+    enc0, _ = encrypt(img0_np, key, transient_steps, scheme=scheme)
 
     images = np.empty((n, *enc0.shape), dtype=np.uint8)
     labels = np.empty(n, dtype=np.int64)
@@ -194,7 +199,7 @@ def generate_encrypted_dataset(
     for i in tqdm(range(n), desc="Encrypting"):
         img_pil, label = base_dataset[i]
         img_np = _pil_to_uint8(img_pil)
-        enc_np, _ = encrypt(img_np, key, transient_steps)
+        enc_np, _ = encrypt(img_np, key, transient_steps, scheme=scheme)
         images[i] = enc_np
         labels[i] = label
 
@@ -213,6 +218,7 @@ def compute_encrypted_stats(
     indices: Sequence[int],
     n_samples: int = 2000,
     transient_steps: int = 1000,
+    scheme: str = "v1",
 ) -> Dict[str, List[float]]:
     """Per-channel mean/std (0-1 scale) of encrypted images.
 
@@ -227,7 +233,7 @@ def compute_encrypted_stats(
     count = 0
     for i in chosen:
         img, _ = base_dataset[i]
-        enc, _ = encrypt(_pil_to_uint8(img), key, transient_steps)
+        enc, _ = encrypt(_pil_to_uint8(img), key, transient_steps, scheme=scheme)
         px = enc.reshape(-1, enc.shape[-1]).astype(np.float64) / 255.0
         total += px.sum(axis=0)
         total_sq += (px ** 2).sum(axis=0)
@@ -274,15 +280,17 @@ def build_encrypted_loaders(
     train_idx, val_idx = get_split_indices(
         len(base_train), cfg.dataset.train_split, seed
     )
+    scheme = cfg.encryption.get("scheme", "v1")
     stats = compute_encrypted_stats(
-        base_train, key, train_idx, transient_steps=cfg.encryption.transient_steps
+        base_train, key, train_idx,
+        transient_steps=cfg.encryption.transient_steps, scheme=scheme,
     )
     transform = build_encrypted_transform(
         cfg.dataset.image_size, stats["mean"], stats["std"]
     )
     kwargs = dict(
         key=key, mode="online", transform=transform,
-        transient_steps=cfg.encryption.transient_steps,
+        transient_steps=cfg.encryption.transient_steps, scheme=scheme,
     )
     enc_train = EncryptedCIFARDataset(base_train, **kwargs)
     enc_test = EncryptedCIFARDataset(base_test, **kwargs)
