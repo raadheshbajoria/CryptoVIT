@@ -230,6 +230,20 @@ def run_variant(
     return results
 
 
+def _free_gpu_memory(device: torch.device) -> None:
+    """Release cached GPU memory and log what is still held."""
+    import gc
+
+    gc.collect()
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+        logger.info(
+            "GPU memory before next variant: allocated=%.0f MB  reserved=%.0f MB",
+            torch.cuda.memory_allocated(device) / 2**20,
+            torch.cuda.memory_reserved(device) / 2**20,
+        )
+
+
 def main() -> None:
     overrides = sys.argv[1:]
     cfg = load_config(overrides=overrides if overrides else None)
@@ -253,6 +267,11 @@ def main() -> None:
             logger.info("Variant %s already finished; loading %s", variant, result_path)
             all_results[variant] = json.loads(result_path.read_text())
             continue
+
+        # Start every variant from a clean GPU: memory kept by the previous
+        # variant can overflow the 4 GB card, and the overflow is silently paged
+        # to system RAM, which made training ~10x slower.
+        _free_gpu_memory(device)
 
         # One automatic retry: run_variant resumes from checkpoints/last.pt,
         # so a transient failure costs at most one epoch.
