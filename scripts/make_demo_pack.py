@@ -228,9 +228,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         logger.warning("No image correct for both models for: %s", missing)
 
     out_dir, demo_dir = PROJECT_ROOT / args.out, PROJECT_ROOT / args.demo_dir
-    if args.replace_demo_images and demo_dir.is_dir():
-        for old in demo_dir.glob("*.png"):
-            old.unlink()
+    if args.replace_demo_images:
+        # Remove files from earlier runs so the folders match SELECTION.md exactly.
+        for folder, patterns in ((demo_dir, ["*.png"]), (out_dir, ["safe_*.png", "failure_*.png"])):
+            for pattern in patterns:
+                for old in folder.glob(pattern) if folder.is_dir() else []:
+                    old.unlink()
     rows = [write_pack(r, "safe", test_ds, args.key, args.block, out_dir, demo_dir)
             for r in picked["safe"].values()]
     if picked["failure"]:
