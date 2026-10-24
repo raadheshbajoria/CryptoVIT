@@ -121,6 +121,16 @@ def test_trained_checkpoint_is_loaded_and_used(tmp_path, monkeypatch):
         assert one["variant"] == "B"
 
 
+def test_several_configs_can_be_combined(tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOVIT_CONFIG", "dermamnist,block2")
+    monkeypatch.setenv("CRYPTOVIT_EXPERIMENTS", str(tmp_path))
+    monkeypatch.setenv("CRYPTOVIT_DEVICE", "cpu")
+    with TestClient(app) as client:
+        data = client.get("/health").json()
+        assert data["dataset"] == "dermamnist"
+        assert data["encryption_scheme"] == "block2"
+
+
 def test_results_endpoint(medical_client):
     client, tmp = medical_client
     assert client.get("/results").status_code == 404

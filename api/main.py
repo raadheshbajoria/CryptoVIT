@@ -23,7 +23,8 @@ Running (skin-lesion demo, DermaMNIST)
 
 Environment variables (all optional)
 ------------------------------------
-    CRYPTOVIT_CONFIG       config name to merge, e.g. ``dermamnist``
+    CRYPTOVIT_CONFIG       config name(s) to merge, e.g. ``dermamnist`` or
+                           ``dermamnist,block2`` (comma separated)
     CRYPTOVIT_EXPERIMENTS  experiments directory holding ``ablation/variant_X``
     CRYPTOVIT_DEVICE       ``cpu`` or ``cuda`` (default: from the config)
     CRYPTOVIT_VARIANT      encrypted variant used by /predict (default ``D``)
@@ -73,8 +74,10 @@ ENCRYPTION_KEY = "CryptoViT_Research_Key_2025"
 
 def _config_overrides() -> list:
     overrides = []
-    if os.environ.get("CRYPTOVIT_CONFIG"):
-        overrides.append(f"config={os.environ['CRYPTOVIT_CONFIG']}")
+    # Several config files can be combined with commas, e.g. "dermamnist,block2"
+    for name in os.environ.get("CRYPTOVIT_CONFIG", "").split(","):
+        if name.strip():
+            overrides.append(f"config={name.strip()}")
     if os.environ.get("CRYPTOVIT_EXPERIMENTS"):
         overrides.append(f"paths.experiments_dir={os.environ['CRYPTOVIT_EXPERIMENTS']}")
     if os.environ.get("CRYPTOVIT_DEVICE"):

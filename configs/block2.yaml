@@ -1,0 +1,8 @@
+# configs/block2.yaml
+# Block-wise learnable encryption with 2x2 blocks (see encryption/block_scheme.py).
+# Combine with a dataset config:  config=dermamnist config=block2
+#
+# On 28x28 images enlarged to 224, a 2x2 block is exactly one 16x16 ViT patch.
+
+encryption:
+  scheme: block2
