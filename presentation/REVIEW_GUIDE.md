@@ -47,8 +47,9 @@ Start it with `python scripts/start_demo.py --block 2` (uses the block-scheme mo
 
 1. In the sidebar dropdown pick `1_safe_melanoma_test846`. The original appears enlarged.
 2. Point at the encrypted image: the lesion is unrecognisable. Mention the key hash under it.
-3. Read the table: the plaintext model says melanoma; check which of the encrypted-image models
-   agree and say so out loud if one does not (each model is wrong on some images).
+3. Read the table. For this image all four models say melanoma: plaintext A 62%, and the three that
+   only saw the encrypted image B 57%, C 50%, D 65% ("All trained models agree" appears under the
+   table). Each model is wrong on some other images, so do not call it perfect.
 4. Click **Decrypt with the correct key**: "exactly identical to the original".
 5. Click **Decrypt with a wrong key**: only noise.
 6. Optional: tick "Also classify with the wrong key" in the sidebar to show that the encrypted-image
