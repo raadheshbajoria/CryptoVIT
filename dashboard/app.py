@@ -250,7 +250,7 @@ if img_bytes is not None:
         st.subheader("What the key does")
         st.caption(
             "Decryption is only possible with the key used to encrypt. With a "
-            "wrong key the result is noise, not an error."
+            "wrong key the result is a scrambled image, not an error."
         )
         k1, k2 = st.columns(2)
         reference = orig_pil.resize((native_size, native_size), Image.LANCZOS).convert("RGB")
@@ -273,7 +273,7 @@ if img_bytes is not None:
                     st.image(_bytes_to_pil(dec.content).resize((256, 256), Image.NEAREST),
                              caption=f"Decrypted with the wrong key '{wrong_key}'",
                              width="stretch")
-                    st.error("The image is not recovered - only noise.")
+                    st.error("The image is not recovered - the result is still scrambled.")
         st.divider()
 
     # ------------------------------------------------------------------ #

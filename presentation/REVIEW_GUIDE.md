@@ -51,7 +51,8 @@ Start it with `python scripts/start_demo.py --block 2` (uses the block-scheme mo
    only saw the encrypted image B 57%, C 50%, D 65% ("All trained models agree" appears under the
    table). Each model is wrong on some other images, so do not call it perfect.
 4. Click **Decrypt with the correct key**: "exactly identical to the original".
-5. Click **Decrypt with a wrong key**: only noise.
+5. Click **Decrypt with a wrong key**: the image is not recovered. With the block scheme it comes out
+   as a different scrambled mosaic of the same colours (not pure noise, but unrecognisable).
 6. Optional: tick "Also classify with the wrong key" in the sidebar to show that the encrypted-image
    models then become unreliable.
 7. If asked for a failure, pick `9_failure_basal_cell_carcinoma_test1214`: the plaintext model is

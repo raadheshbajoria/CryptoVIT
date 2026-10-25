@@ -208,7 +208,7 @@ async def decrypt_image(
 
     WARNING: In a production system this endpoint would not exist.
     It is included only for demonstration purposes. With a wrong key the
-    result is noise, not an error.
+    result is a scrambled image, not an error.
     """
     svc = _require_service()
     try:

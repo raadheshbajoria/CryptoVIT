@@ -21,7 +21,7 @@ image (28x28 RGB) --encrypt(key)--> encrypted image --enlarge to 224x224--> norm
 ```
 
 The decryption path exists only to show that the encryption is lossless: with the right key the
-original image is restored exactly, with a wrong key you get noise.
+original image is restored exactly, with a wrong key you get a scrambled image.
 
 ## Encryption schemes (`encryption.scheme`)
 
