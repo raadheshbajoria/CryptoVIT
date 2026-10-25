@@ -1,6 +1,3 @@
-"""Tests for the MedMNIST adapter, dispatch and config selection. Uses a fake
-MedMNIST-like dataset, so no download is needed."""
-
 from __future__ import annotations
 
 import numpy as np
@@ -20,8 +17,6 @@ from cryptovit.utils import load_config
 
 
 class FakeMedMNIST(Dataset):
-    """Mimics medmnist: PIL images, labels as shape (N, 1) arrays."""
-
     def __init__(self, n=10, mode="RGB", num_classes=7, seed=0):
         rng = np.random.default_rng(seed)
         shape = (28, 28, 3) if mode == "RGB" else (28, 28)

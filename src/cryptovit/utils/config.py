@@ -1,14 +1,3 @@
-"""
-cryptovit/utils/config.py
-=========================
-Configuration management for CryptoViT.
-
-Uses OmegaConf to load YAML files and merge them hierarchically:
-  base.yaml  <-  dataset-override.yaml  <-  experiment.yaml  <-  CLI dot-notation overrides
-
-Provides a single ``load_config`` entry point and a ``get_device`` helper.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -29,24 +18,6 @@ def load_config(
     overrides: Optional[List[str]] = None,
     extra_files: Optional[List[Union[str, Path]]] = None,
 ) -> DictConfig:
-    """Load and merge CryptoViT configuration.
-
-    Parameters
-    ----------
-    base:
-        Filename of the base YAML inside ``configs/``.
-    overrides:
-        Optional list of dot-notation overrides, e.g.
-        ``["dataset.name=cifar100", "training.batch_size=64"]``.
-    extra_files:
-        Additional YAML files to merge on top of *base* (in order).
-        Paths may be absolute or relative to ``configs/``.
-
-    Returns
-    -------
-    DictConfig
-        Merged, structured OmegaConf configuration object.
-    """
     base_path = CONFIGS_DIR / base
     if not base_path.exists():
         raise FileNotFoundError(f"Base config not found: {base_path}")
@@ -82,7 +53,6 @@ def load_config(
 
 
 def _validate_config(cfg: DictConfig) -> None:
-    """Run basic sanity checks on the merged configuration."""
     num_classes_map = {
         "cifar10": 10,
         "cifar100": 100,
@@ -116,7 +86,6 @@ def _validate_config(cfg: DictConfig) -> None:
 
 
 def get_device(cfg: DictConfig):
-    """Return the torch device based on config and hardware availability."""
     import torch
 
     preference = cfg.hardware.device
@@ -133,5 +102,4 @@ def get_device(cfg: DictConfig):
 
 
 def pretty_print(cfg: DictConfig) -> None:
-    """Print the configuration in human-readable YAML format."""
     print(OmegaConf.to_yaml(cfg))

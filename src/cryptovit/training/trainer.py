@@ -1,19 +1,3 @@
-"""
-cryptovit/training/trainer.py
-==============================
-Full training loop for CryptoViT / plain ViT.
-
-Features
---------
-* AdamW optimiser with cosine LR schedule + linear warmup
-* PyTorch AMP (mixed precision) for RTX 3050 4GB VRAM
-* Gradient clipping
-* Checkpoint saving - best-K + periodic
-* Early stopping
-* Rich progress display via tqdm
-* Minimal TensorBoard support (optional)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -42,7 +26,6 @@ def _cosine_schedule_with_warmup(
     min_lr: float = 1e-6,
     base_lr: float = 3e-4,
 ) -> LambdaLR:
-    """Return a LambdaLR that implements linear warmup then cosine decay."""
 
     def lr_lambda(step: int) -> float:
         if step < num_warmup_steps:
@@ -56,18 +39,12 @@ def _cosine_schedule_with_warmup(
 
 
 def balanced_class_weights(targets: Sequence[int], num_classes: int) -> torch.Tensor:
-    """Inverse-frequency class weights: ``N / (num_classes * count_c)``.
-
-    A class with no training samples gets the weight of a single-sample class
-    instead of dividing by zero.
-    """
     counts = np.bincount(np.asarray(targets, dtype=np.int64), minlength=num_classes)
     weights = len(targets) / (num_classes * np.maximum(counts, 1))
     return torch.tensor(weights, dtype=torch.float32)
 
 
 def build_class_weights(cfg: DictConfig, train_loader: DataLoader) -> Optional[torch.Tensor]:
-    """Class weights requested by ``cfg.training.class_weights`` ("none"|"balanced")."""
     mode = cfg.training.get("class_weights", "none")
     if mode in (None, "none", False):
         return None
@@ -84,13 +61,6 @@ def build_class_weights(cfg: DictConfig, train_loader: DataLoader) -> Optional[t
 def split_batch_for_memory(
     batch_size: int, accumulation_steps: int, max_micro_batch: int
 ) -> Tuple[int, int]:
-    """Return ``(micro_batch, accumulation_steps)`` with the same effective batch.
-
-    Used when a model does not fit in GPU memory at the configured batch
-    size: the loader yields ``micro_batch`` images and gradients are
-    accumulated so that ``micro_batch * accumulation_steps`` equals the
-    original ``batch_size * accumulation_steps``.
-    """
     if batch_size <= 0 or accumulation_steps <= 0 or max_micro_batch <= 0:
         raise ValueError("batch_size, accumulation_steps and max_micro_batch must be > 0")
     if batch_size <= max_micro_batch:
@@ -104,8 +74,6 @@ def split_batch_for_memory(
 
 
 class CheckpointManager:
-    """Saves best-K checkpoints and periodic snapshots."""
-
     def __init__(self, save_dir: Path, keep_best_k: int = 3):
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -165,32 +133,6 @@ class CheckpointManager:
 
 
 class Trainer:
-    """Encapsulates the complete training loop.
-
-    Parameters
-    ----------
-    model:
-        The neural network to train.
-    cfg:
-        Full project configuration.
-    device:
-        torch.device to run on.
-    experiment_dir:
-        Root directory for checkpoints and logs.
-    key_embedding:
-        Optional ``(1, key_embed_dim)`` tensor passed to the model as
-        ``key_embedding=`` on every forward pass (training and validation).
-        Only models with a key-aware positional encoding accept it; leave
-        ``None`` for every other model.
-    class_weights:
-        Optional per-class loss weights (see ``balanced_class_weights``), used
-        to counter class imbalance.
-
-    ``cfg.training.select_metric`` chooses what decides the "best" checkpoint
-    and early stopping: ``"accuracy"`` (default) or ``"balanced_accuracy"``
-    (mean per-class recall, the right choice for imbalanced medical data).
-    """
-
     def __init__(
         self,
         model: nn.Module,
@@ -277,26 +219,6 @@ class Trainer:
         val_loader: DataLoader,
         resume: bool = False,
     ) -> Dict[str, List[float]]:
-        """Run the complete training loop.
-
-        Parameters
-        ----------
-        train_loader:
-            DataLoader for the training set.
-        val_loader:
-            DataLoader for the validation set.
-        resume:
-            If True and ``checkpoints/last.pt`` exists in the experiment
-            directory, continue from the epoch after the one it holds
-            (model, optimiser, LR schedule, AMP scaler, history and
-            early-stopping state are restored). The data order of the
-            resumed epochs is not bit-identical to an uninterrupted run.
-
-        Returns
-        -------
-        dict
-            Training history (losses and accuracies per epoch).
-        """
         t = self.cfg.training
         steps_per_epoch = math.ceil(len(train_loader) / self.accum_steps)
         total_steps = self.epochs * steps_per_epoch
@@ -402,11 +324,6 @@ class Trainer:
         return self.ckpt_manager.save_dir / "last.pt"
 
     def _save_last(self, epoch: int, finished: bool) -> None:
-        """Write the full training state so an interrupted run can resume.
-
-        Written to a temporary file first and then renamed, so a crash while
-        saving never leaves a corrupt ``last.pt``.
-        """
         state = {
             "epoch": epoch,
             "finished": finished,
@@ -426,7 +343,6 @@ class Trainer:
         tmp.replace(self._last_path)
 
     def _load_last(self) -> Tuple[int, bool]:
-        """Restore state from ``last.pt``; return ``(next_epoch, finished)``."""
         if not self._last_path.exists():
             logger.info("No resume checkpoint at %s; starting from epoch 1.", self._last_path)
             return 1, False
@@ -449,7 +365,6 @@ class Trainer:
         return state["epoch"] + 1, bool(state["finished"])
 
     def _forward(self, images: torch.Tensor) -> torch.Tensor:
-        """Run the model, supplying the key embedding when one is configured."""
         if self.key_embedding is None:
             return self.model(images)
         return self.model(images, key_embedding=self.key_embedding)
@@ -546,7 +461,6 @@ class Trainer:
         return total_loss / total_samples, total_correct / total_samples
 
     def load_best_checkpoint(self) -> None:
-        """Restore model weights from the best saved checkpoint."""
         best = self.ckpt_manager.best_checkpoint()
         if best is None:
             logger.warning("No checkpoint found - model weights unchanged.")

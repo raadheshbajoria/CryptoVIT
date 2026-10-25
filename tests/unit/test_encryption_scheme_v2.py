@@ -1,6 +1,3 @@
-"""Tests for encryption scheme "v2" (independent per-channel permutations and
-keystreams, uniform chaos-driven shuffle) and its coexistence with "v1"."""
-
 from __future__ import annotations
 
 import numpy as np

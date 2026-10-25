@@ -1,36 +1,3 @@
-"""
-cryptovit/encryption/encrypt.py
-=================================
-Top-level encryption / decryption API.
-
-Pipeline (encrypt)
-------------------
-    image (H,W,C uint8)
-      -> KeyGenerator(key)
-        -> permute_image(image, perm_indices)          [Phase 3]
-          -> diffuse(permuted, keystream, rule_seq)    [Phase 4]
-            -> encrypted (H,W,C uint8)
-
-Pipeline (decrypt)
-------------------
-    encrypted (H,W,C uint8)
-      -> KeyGenerator(key)
-        -> inverse_diffuse(encrypted, keystream, rule_seq)   [Phase 4 undo]
-          -> inverse_permute_image(undiffused, perm_indices) [Phase 3 undo]
-            -> image (H,W,C uint8)
-
-The key generator is always reset before use so that encrypt and decrypt
-produce identical key-streams regardless of call order.
-
-Usage
------
-    from cryptovit.encryption import encrypt, decrypt
-
-    encrypted, meta = encrypt(image, key="secret")
-    restored = decrypt(encrypted, key="secret", meta=meta)
-    assert np.array_equal(image, restored)
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -60,7 +27,6 @@ DEFAULT_SCHEME = "v1"
 
 
 def _check_scheme(scheme: str) -> str:
-    """Accept "v1", "v2" or a block scheme such as "block2" (see block_scheme.py)."""
     if scheme not in SCHEMES and parse_block_scheme(scheme) is None:
         raise ValueError(
             f"Unknown encryption scheme '{scheme}'; choose from {SCHEMES} "
@@ -77,19 +43,6 @@ def _key_streams(
     channels: int = 1,
     scheme: str = DEFAULT_SCHEME,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Derive (permutation, keystream, DNA rules) for ``n`` pixels.
-
-    The streams depend only on (key, n, transient_steps, channels, scheme),
-    not on the image content, so they are computed once and reused for every
-    image of the same size. Generation order matters and is fixed:
-    permutation, keystream, rules. The returned arrays are read-only because
-    they are shared between calls.
-
-    scheme ``"v1"``: one permutation and one keystream shared by all channels
-        (``perm`` is ``(n,)``, ``keystream`` is ``(n,)``).
-    scheme ``"v2"``: independent uniform permutation and keystream per channel
-        (``perm`` is ``(channels, n)``, ``keystream`` is ``(n, channels)``).
-    """
     kg = KeyGenerator(key, transient_steps=transient_steps)
     if scheme == "v2":
         perm = kg.channel_permutations(n, channels)
@@ -127,29 +80,6 @@ def encrypt(
     transient_steps: int = 1000,
     scheme: str = DEFAULT_SCHEME,
 ) -> Tuple[np.ndarray, Dict]:
-    """Encrypt an image using hyperchaotic permutation + DNA diffusion.
-
-    Parameters
-    ----------
-    image : (H, W, C) or (H, W) uint8 numpy array
-        Input plaintext image.
-    key : str or bytes
-        Secret key.
-    transient_steps : int
-        Number of warm-up steps for the chaotic system.
-    scheme : {"v1", "v2"}
-        ``"v1"`` (default) shares one permutation and keystream across colour
-        channels. ``"v2"`` uses independent uniform permutations and
-        keystreams per channel. The two produce different ciphertexts.
-
-    Returns
-    -------
-    encrypted : same shape and dtype as ``image``
-    meta : dict with keys:
-        ``shape``     - original image shape
-        ``key_hash``  - SHA-256 of the key (for verification, not reconstruction)
-        ``scheme``    - the scheme used; ``decrypt`` reads it back
-    """
     if image.dtype != np.uint8:
         raise TypeError(f"Image must be uint8; got {image.dtype}.")
     _check_scheme(scheme)
@@ -189,25 +119,6 @@ def decrypt(
     transient_steps: int = 1000,
     scheme: str | None = None,
 ) -> np.ndarray:
-    """Decrypt an image produced by ``encrypt``.
-
-    Parameters
-    ----------
-    encrypted : (H, W, C) or (H, W) uint8 numpy array
-    key : str or bytes
-        The same key used during encryption.
-    meta : dict, optional
-        Metadata returned by ``encrypt``; its ``scheme`` is used when
-        ``scheme`` is not given.
-    transient_steps : int
-    scheme : {"v1", "v2"}, optional
-        Scheme used for encryption. Defaults to ``meta["scheme"]`` if present,
-        else ``"v1"`` (so data encrypted before schemes existed still works).
-
-    Returns
-    -------
-    image : same shape and dtype as ``encrypted``
-    """
     if encrypted.dtype != np.uint8:
         raise TypeError(f"Encrypted array must be uint8; got {encrypted.dtype}.")
     if scheme is None:
@@ -234,18 +145,6 @@ def verify_roundtrip(
     transient_steps: int = 1000,
     scheme: str = DEFAULT_SCHEME,
 ) -> bool:
-    """Encrypt then decrypt and verify pixel-perfect reconstruction.
-
-    Parameters
-    ----------
-    image : uint8 numpy array
-    key : str or bytes
-    scheme : {"v1", "v2"}
-
-    Returns
-    -------
-    bool - True if reconstruction is exact, False otherwise.
-    """
     encrypted, meta = encrypt(image, key, transient_steps, scheme)
     restored = decrypt(encrypted, key, meta, transient_steps)
     ok = bool(np.array_equal(image, restored))

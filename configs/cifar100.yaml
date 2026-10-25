@@ -1,7 +1,3 @@
-# configs/cifar100.yaml
-# Overrides for CIFAR-100 main benchmark
-# Merge on top of base.yaml
-
 dataset:
   name: cifar100
   num_classes: 100

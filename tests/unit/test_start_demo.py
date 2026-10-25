@@ -1,5 +1,3 @@
-"""Tests for the demo launcher (no processes are started)."""
-
 from __future__ import annotations
 
 import importlib.util

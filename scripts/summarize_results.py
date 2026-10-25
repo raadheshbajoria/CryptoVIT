@@ -1,17 +1,4 @@
 #!/usr/bin/env python
-"""
-scripts/summarize_results.py
-=============================
-Build RESULTS.md from the saved ``result_<variant>.json`` files, so every number
-in the write-up comes straight from a measurement.
-
-    python scripts/summarize_results.py
-    python scripts/summarize_results.py --run "per-pixel (v1)=experiments/dermamnist" \
-                                        --run "block2=experiments/dermamnist_block2"
-
-Each ``--run LABEL=DIR`` names an encryption scheme and the experiments directory
-whose ``ablation/`` folder holds its results. Variant A (plaintext) is listed once.
-"""
 
 from __future__ import annotations
 
@@ -60,7 +47,6 @@ def _row(scheme: str, variant: str, r: Dict, melanoma_idx: Optional[int]) -> str
 
 
 def build_markdown(runs: Sequence[Tuple[str, Dict[str, Dict]]]) -> str:
-    """``runs``: (scheme label, {variant: result}) pairs, plaintext A taken from the first run."""
     class_names: List[str] = []
     for _, results in runs:
         for r in results.values():

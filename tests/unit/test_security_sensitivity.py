@@ -1,6 +1,3 @@
-"""Tests for the standard plaintext-sensitivity NPCR/UACI and the
-size-aware entropy reference."""
-
 from __future__ import annotations
 
 import hashlib
@@ -19,13 +16,11 @@ from cryptovit.evaluation.security_metrics import (
 
 
 def _ideal_cipher(image, key):
-    """Idealised cipher: output depends on every input byte (full avalanche)."""
     seed = int.from_bytes(hashlib.sha256(image.tobytes() + key.encode()).digest()[:8], "big")
     return np.random.default_rng(seed).integers(0, 256, image.shape, dtype=np.uint8)
 
 
 def _pixelwise_cipher(image, key):
-    """No diffusion: XOR with a constant, so one pixel change stays one pixel."""
     return image ^ np.uint8(0x5A)
 
 

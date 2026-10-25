@@ -1,6 +1,3 @@
-"""The block<B> scheme as seen through encrypt()/decrypt(), the dataset loaders,
-the inference service and the API (it must work everywhere a scheme name does)."""
-
 from __future__ import annotations
 
 import io

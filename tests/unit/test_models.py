@@ -1,9 +1,3 @@
-"""
-tests/unit/test_models.py
-=========================
-Unit tests for CryptoViT, patch embedding variants, and positional encodings.
-"""
-
 from __future__ import annotations
 
 import torch

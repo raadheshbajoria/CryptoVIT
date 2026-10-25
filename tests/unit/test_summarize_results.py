@@ -1,5 +1,3 @@
-"""Tests for the results summary tool."""
-
 from __future__ import annotations
 
 import importlib.util

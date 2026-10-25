@@ -1,20 +1,4 @@
 #!/usr/bin/env python
-"""
-scripts/thermal_guard.py
-=========================
-Pause a running job when the GPU gets too hot and resume it once it has cooled.
-
-    python scripts/thermal_guard.py --pid 12345 --high 80 --low 70
-
-When the GPU temperature reaches ``--high`` the job (the process and all of its
-child processes, e.g. data-loader workers) is *suspended*: it freezes in place,
-loses no progress and stops using the GPU, so the card cools. When the
-temperature falls to ``--low`` or below, the job is resumed. The guard exits
-when the job exits. Windows only (uses ``NtSuspendProcess``); the GPU
-temperature comes from ``nvidia-smi``.
-
-Every pause and resume is written to the log with the temperature and time.
-"""
 
 from __future__ import annotations
 
@@ -32,12 +16,6 @@ logger = logging.getLogger("thermal_guard")
 
 
 def paced_pause(elapsed: float, duty: float, cycle: float) -> bool:
-    """True during the paused part of a duty cycle.
-
-    With ``duty=0.7`` and ``cycle=60`` the job runs for the first 42 s of every
-    minute and is paused for the last 18 s, which spreads the load evenly
-    instead of running flat out. ``duty >= 1`` never pauses.
-    """
     if duty >= 1.0:
         return False
     if not 0.0 < duty < 1.0:
@@ -48,8 +26,6 @@ def paced_pause(elapsed: float, duty: float, cycle: float) -> bool:
 
 
 class ThermalGovernor:
-    """Hysteresis controller: suspend at ``high``, resume at ``low`` or below."""
-
     def __init__(self, high: float = 80.0, low: float = 70.0):
         if low >= high:
             raise ValueError(f"low ({low}) must be below high ({high}).")
@@ -57,7 +33,6 @@ class ThermalGovernor:
         self.suspended = False
 
     def update(self, temperature: float) -> Optional[str]:
-        """Return ``"suspend"``, ``"resume"`` or ``None`` for this reading."""
         if not self.suspended and temperature >= self.high:
             self.suspended = True
             return "suspend"
@@ -87,7 +62,6 @@ class _PROCESSENTRY32(ctypes.Structure):
 
 
 def process_tree(root_pid: int) -> List[int]:
-    """``root_pid`` plus all of its descendants (Windows toolhelp snapshot)."""
     kernel32 = ctypes.windll.kernel32
     snapshot = kernel32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
     children = {}
@@ -121,13 +95,11 @@ def _nt_call(pid: int, function: str) -> bool:
 
 
 def suspend_tree(root_pid: int) -> Set[int]:
-    """Suspend the whole process tree; returns the PIDs that were suspended."""
     pids = {pid for pid in process_tree(root_pid) if _nt_call(pid, "NtSuspendProcess")}
     return pids
 
 
 def resume_tree(root_pid: int, remembered: Set[int]) -> Set[int]:
-    """Resume everything suspended earlier plus any current descendants."""
     pids = set(remembered) | set(process_tree(root_pid))
     return {pid for pid in pids if _nt_call(pid, "NtResumeProcess")}
 
@@ -144,7 +116,6 @@ def process_alive(pid: int) -> bool:
 
 
 def gpu_temperature() -> Optional[float]:
-    """Hottest GPU temperature in Celsius, or None if nvidia-smi fails."""
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
@@ -167,12 +138,6 @@ def run(
     cycle: float = 60.0,
     latch: Optional[Path] = None,
 ) -> int:
-    """Guard ``pid``: temperature rule (high/low) plus optional duty-cycle pacing.
-
-    The job is frozen whenever *either* the temperature rule or the pacing
-    cycle asks for it. Pacing pauses are not logged one by one (there would be
-    hundreds); a summary line is written every 10 minutes instead.
-    """
     paced_pause(0.0, duty, cycle)
     governor = ThermalGovernor(high, low)
     suspended_pids: Set[int] = set()

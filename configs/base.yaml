@@ -1,18 +1,9 @@
-# ============================================================
-# CryptoViT - Base Configuration
-# All values can be overridden by experiment-specific configs
-# or via CLI: python script.py key=value
-# ============================================================
-
 project:
   name: CryptoViT
   version: "0.1.0"
   description: "Chaos-Assisted Vision Transformer for Privacy-Preserving Classification"
   seed: 42
 
-# ----------------------------------------------------------
-# Paths
-# ----------------------------------------------------------
 paths:
   data_dir: data
   raw_dir: data/raw
@@ -23,9 +14,6 @@ paths:
   logs_dir: experiments/logs
   results_dir: experiments/results
 
-# ----------------------------------------------------------
-# Dataset
-# ----------------------------------------------------------
 dataset:
   name: cifar10
   image_size: 224
@@ -45,9 +33,6 @@ dataset:
     mean: [0.4914, 0.4822, 0.4465]
     std:  [0.2023, 0.1994, 0.2010]
 
-# ----------------------------------------------------------
-# Model
-# ----------------------------------------------------------
 model:
   name: vit_small
   image_size: 224
@@ -64,15 +49,9 @@ model:
   use_cls_token: true
   pool: cls
 
-# ----------------------------------------------------------
-# Encryption
-# ----------------------------------------------------------
 encryption:
   enabled: false
   system: hyperchaotic_4d
-  # v1: one permutation + keystream shared by all colour channels (default,
-  #     matches data encrypted before schemes existed)
-  # v2: independent uniform permutation + keystream per channel
   scheme: v1
   transient_steps: 1000
   use_pixel_permutation: true
@@ -80,9 +59,6 @@ encryption:
   use_diffusion: true
   use_dna: true
 
-# ----------------------------------------------------------
-# Training
-# ----------------------------------------------------------
 training:
   epochs: 100
   batch_size: 128
@@ -101,16 +77,10 @@ training:
   keep_best_k: 3
   early_stopping_patience: 20
 
-# ----------------------------------------------------------
-# Evaluation
-# ----------------------------------------------------------
 evaluation:
   metrics: [accuracy, precision, recall, f1, confusion_matrix]
   batch_size: 256
 
-# ----------------------------------------------------------
-# Logging / Experiment Tracking
-# ----------------------------------------------------------
 logging:
   level: INFO
   use_tensorboard: false
@@ -118,9 +88,6 @@ logging:
   mlflow_uri: "mlruns"
   log_every_n_steps: 50
 
-# ----------------------------------------------------------
-# Hardware
-# ----------------------------------------------------------
 hardware:
   device: auto
   num_gpus: 1

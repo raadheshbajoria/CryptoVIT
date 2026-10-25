@@ -1,26 +1,3 @@
-"""
-cryptovit/models/patch_embedding.py
-=====================================
-Patch embedding variants for CryptoViT.
-
-Standard ViT uses a simple linear projection (Conv2d) to embed patches.
-CryptoPatchEmbedding extends this with a two-path design that can learn
-a more robust mapping from encrypted patch representations.
-
-Design
-------
-* ``StandardPatchEmbedding``  - identical to the one in vit.py; re-exported
-  here for clarity and for use in ablation experiments.
-* ``CryptoPatchEmbedding``    - uses a small convolutional front-end
-  before the linear projection.  The extra convolutions give the model
-  capacity to handle the statistical properties of encrypted patches,
-  which have higher entropy and lower spatial correlation than plaintext.
-
-Both classes share the same interface (``__init__`` signature and
-``forward`` signature) so they can be swapped into ``VisionTransformer``
-via the ``patch_embedding_cls`` parameter.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -33,12 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class StandardPatchEmbedding(nn.Module):
-    """Standard ViT patch embedding: Conv2d(in_channels, embed_dim, patch_size).
-
-    This is identical to the PatchEmbedding in vit.py.  It is duplicated
-    here so that ablation experiments can import both from one place.
-    """
-
     def __init__(
         self,
         image_size: int = 224,
@@ -60,38 +31,11 @@ class StandardPatchEmbedding(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, H, W) -> (B, N, embed_dim)"""
         x = self.projection(x)
         return rearrange(x, "b d h w -> b (h w) d")
 
 
 class CryptoPatchEmbedding(nn.Module):
-    """Custom patch embedding adapted for encrypted / high-entropy images.
-
-    Architecture
-    ------------
-    1. A two-layer convolutional front-end (3x3 conv + BatchNorm + GELU, twice)
-       runs over the *whole* image at full resolution, so the receptive field
-       of a feature near a patch border extends into the neighbouring patch.
-       Its memory use therefore scales with ``hidden_dim * H * W`` per image.
-    2. A final Conv2d with stride=patch_size performs the linear projection
-       (same as the standard embedding).
-
-    Compared to ``StandardPatchEmbedding``, this adds ~3.04M parameters at
-    ``hidden_dim=64`` (the 16x16 projection now reads 64 channels instead of
-    3), versus ~0.15M for the standard embedding. Any accuracy gain over the
-    standard embedding must be read with that capacity difference in mind.
-    Whether it helps on encrypted images is an empirical question tested by
-    the ablation study.
-
-    Parameters
-    ----------
-    image_size, patch_size, in_channels, embed_dim:
-        Same as ``StandardPatchEmbedding``.
-    hidden_dim:
-        Number of channels in the convolutional front-end (default 64).
-    """
-
     def __init__(
         self,
         image_size: int = 224,
@@ -138,7 +82,6 @@ class CryptoPatchEmbedding(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, H, W) -> (B, N, embed_dim)"""
         x = self.conv_front(x)
         x = self.projection(x)
         return rearrange(x, "b d h w -> b (h w) d")

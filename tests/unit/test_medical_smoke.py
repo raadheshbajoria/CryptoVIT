@@ -1,8 +1,3 @@
-"""End-to-end smoke test of the medical configuration (config=dermamnist):
-class-weighted loss, balanced-accuracy checkpointing, official-split encrypted
-loaders (separate validation set) and the medical metrics, for variants A-D,
-on tiny fake 7-class data (no download)."""
-
 from __future__ import annotations
 
 import importlib.util
@@ -23,8 +18,6 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class FakeMedMNIST(Dataset):
-    """Imbalanced 7-class fake data shaped like DermaMNIST (28x28 RGB)."""
-
     def __init__(self, n, seed):
         rng = np.random.default_rng(seed)
         probs = np.array([0.05, 0.08, 0.1, 0.02, 0.1, 0.6, 0.05])

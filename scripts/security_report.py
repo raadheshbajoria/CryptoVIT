@@ -1,20 +1,4 @@
 #!/usr/bin/env python
-"""
-scripts/security_report.py
-===========================
-Measure how strongly each encryption scheme scrambles real DermaMNIST test images and
-write the numbers to SECURITY.md. These are statistical checks, not a security proof.
-
-    python scripts/security_report.py --n 100
-
-Metrics, averaged over the images (all on 28x28 RGB test images):
-* entropy of the encrypted image vs the reference for uniform noise of the same size
-* adjacent-pixel correlation (horizontal), plaintext vs encrypted
-* key sensitivity: ciphertexts under two keys differing by one bit (NPCR / UACI)
-* plaintext sensitivity: ONE plaintext pixel changed, ciphertexts compared (NPCR / UACI)
-* histogram distance: total-variation distance between the pixel-value histograms of the
-  plaintext and its ciphertext (0 = identical histograms, 1 = disjoint)
-"""
 
 from __future__ import annotations
 
@@ -31,19 +15,12 @@ LABELS = {"v1": "per-pixel (v1)", "block2": "block (2x2)"}
 
 
 def histogram_distance(a: np.ndarray, b: np.ndarray) -> float:
-    """Total-variation distance between the 256-bin value histograms of two images."""
     ha = np.bincount(a.ravel(), minlength=256) / a.size
     hb = np.bincount(b.ravel(), minlength=256) / b.size
     return float(0.5 * np.abs(ha - hb).sum())
 
 
 def mixture_distance(plain: np.ndarray, enc: np.ndarray) -> float:
-    """TV distance between the encrypted histogram and the average of the plaintext
-    histogram and its inversion (v -> 255 - v).
-
-    The block scheme inverts about half of the blocks, so its output histogram should be
-    close to this mixture even though it differs from the plaintext histogram itself.
-    """
     h = np.bincount(plain.ravel(), minlength=256) / plain.size
     mixture = 0.5 * (h + h[::-1])
     he = np.bincount(enc.ravel(), minlength=256) / enc.size

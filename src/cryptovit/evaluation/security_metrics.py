@@ -1,43 +1,3 @@
-"""
-cryptovit/evaluation/security_metrics.py
-==========================================
-Image-encryption security metrics.
-
-Metrics implemented
--------------------
-* Shannon entropy (per channel and overall)
-* Histogram uniformity (chi-squared statistic and visual check)
-* Adjacent-pixel correlation (horizontal, vertical, diagonal)
-* NPCR  - Number of Pixels Change Rate
-* UACI  - Unified Average Changing Intensity
-* Key sensitivity - divergence after a tiny key perturbation
-* Encryption/decryption time
-
-These metrics are standard in the image-encryption literature.
-Reference values often quoted for a good scheme on large images:
-  Entropy  > 7.99  (max 8.0; unreachable for small images, see below)
-  NPCR     > 99%   (ideally ~99.6%)  - plaintext sensitivity: change ONE
-                                       plaintext pixel, compare the two ciphertexts
-  UACI     ~ 33%   (ideal 33.46%)    - same test as NPCR
-  Correlation ~ 0  (should be < 0.01 in absolute value)
-
-Caveats
--------
-* Entropy estimated from n pixels per channel is biased low: for uniform noise
-  the expected value is about log2(256) - 255 / (2 n ln 2), i.e. ~7.82 for a
-  32x32 channel and ~7.99 only for roughly 256x256 or larger.
-  ``expected_uniform_entropy`` gives the right reference for an image size.
-* NPCR/UACI are defined between two *ciphertexts* (one plaintext pixel or one
-  key bit changed). ``npcr`` / ``uaci`` between a plaintext and its own
-  ciphertext measure something else (see ``compute_all_security_metrics``).
-* Good statistics do not by themselves establish cryptographic security.
-
-References
-----------
-Chai et al. (2017), Signal Processing: Image Communication.
-Zhu & Zhu (2020), Entropy.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -51,29 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 def expected_uniform_entropy(n_samples: int, levels: int = 256) -> float:
-    """Expected plug-in entropy of ``n_samples`` i.i.d. uniform samples.
-
-    Uses the first-order (Miller-Madow) bias correction:
-    ``log2(levels) - (levels - 1) / (2 * n_samples * ln 2)``. This is the
-    realistic upper reference for a channel of ``n_samples`` pixels; the
-    "7.99" figure only applies to images of roughly 256x256 pixels or more.
-    """
     if n_samples <= 0:
         raise ValueError("n_samples must be positive.")
     return math.log2(levels) - (levels - 1) / (2.0 * n_samples * math.log(2))
 
 
 def compute_entropy(image: np.ndarray) -> Dict[str, float]:
-    """Compute Shannon entropy of each channel and overall.
-
-    Parameters
-    ----------
-    image : (H, W) or (H, W, C) uint8 array
-
-    Returns
-    -------
-    dict with keys ``channel_{c}`` for each channel, and ``overall``.
-    """
     if image.ndim == 2:
         image = image[:, :, np.newaxis]
     C = image.shape[2]
@@ -100,19 +43,6 @@ def compute_entropy(image: np.ndarray) -> Dict[str, float]:
 def histogram_analysis(
     image: np.ndarray,
 ) -> Dict[str, float]:
-    """Compute chi-squared statistic against a uniform histogram.
-
-    For a perfectly encrypted image each intensity level appears equally
-    often -> chi-squared ~ 0.
-
-    Parameters
-    ----------
-    image : (H, W) or (H, W, C) uint8 array
-
-    Returns
-    -------
-    dict with ``chi_squared_channel_{c}`` and ``chi_squared_overall``.
-    """
     if image.ndim == 2:
         image = image[:, :, np.newaxis]
     C = image.shape[2]
@@ -133,7 +63,6 @@ def histogram_analysis(
 
 
 def _pearson_correlation(a: np.ndarray, b: np.ndarray) -> float:
-    """Pearson correlation between two 1-D arrays."""
     a = a.astype(np.float64)
     b = b.astype(np.float64)
     ma, mb = a.mean(), b.mean()
@@ -149,21 +78,6 @@ def adjacent_pixel_correlation(
     n_samples: int = 5000,
     seed: int = 0,
 ) -> Dict[str, float]:
-    """Measure horizontal, vertical, and diagonal adjacent-pixel correlations.
-
-    Parameters
-    ----------
-    image : (H, W) or (H, W, C) uint8 array
-    n_samples : int
-        Number of random pixel pairs to sample (for speed).
-    seed : int
-        NumPy RNG seed for reproducibility.
-
-    Returns
-    -------
-    dict with keys:
-        horizontal, vertical, diagonal  (per channel + overall)
-    """
     if image.ndim == 2:
         image = image[:, :, np.newaxis]
     H, W, C = image.shape
@@ -201,18 +115,6 @@ def adjacent_pixel_correlation(
 
 
 def npcr(img1: np.ndarray, img2: np.ndarray) -> float:
-    """Compute NPCR between two images encrypted with near-identical keys.
-
-    NPCR = (number of pixels that differ) / (total pixels) x 100%
-
-    Parameters
-    ----------
-    img1, img2 : same-shape uint8 arrays
-
-    Returns
-    -------
-    float in [0, 100]
-    """
     if img1.shape != img2.shape:
         raise ValueError(f"Shape mismatch: {img1.shape} vs {img2.shape}")
     diff = (img1 != img2).astype(np.float64)
@@ -220,19 +122,6 @@ def npcr(img1: np.ndarray, img2: np.ndarray) -> float:
 
 
 def uaci(img1: np.ndarray, img2: np.ndarray) -> float:
-    """Compute UACI between two images.
-
-    UACI = mean(|c1 - c2| / 255) x 100%
-    Ideal value for a good cipher is ~33.46%.
-
-    Parameters
-    ----------
-    img1, img2 : same-shape uint8 arrays
-
-    Returns
-    -------
-    float in [0, 100]
-    """
     if img1.shape != img2.shape:
         raise ValueError(f"Shape mismatch: {img1.shape} vs {img2.shape}")
     diff = np.abs(img1.astype(np.float64) - img2.astype(np.float64))
@@ -245,21 +134,6 @@ def key_sensitivity(
     encrypt_fn: Callable,
     delta_chars: int = 1,
 ) -> Dict[str, float]:
-    """Measure how much the encrypted output changes when the key changes slightly.
-
-    Parameters
-    ----------
-    image : uint8 array
-    key : str - original encryption key
-    encrypt_fn : callable(image, key) -> encrypted_image
-        Should accept an image and key string and return the encrypted array.
-    delta_chars : int
-        Number of characters to flip at the end of the key.
-
-    Returns
-    -------
-    dict with ``npcr`` and ``uaci`` between encryptions under key and key+delta.
-    """
     enc1 = encrypt_fn(image, key)
 
     key_modified = key[:-delta_chars] + chr(ord(key[-1]) ^ 1)
@@ -278,28 +152,6 @@ def plaintext_sensitivity(
     n_trials: int = 10,
     seed: int = 0,
 ) -> Dict[str, float]:
-    """Standard NPCR/UACI: change ONE plaintext pixel, compare the ciphertexts.
-
-    For each trial a random pixel/channel has its least-significant bit
-    flipped, both images are encrypted with the same key, and NPCR/UACI are
-    computed between the two ciphertexts. Ideal values for a cipher with full
-    diffusion are NPCR ~99.6% and UACI ~33.46%.
-
-    Parameters
-    ----------
-    image : (H, W) or (H, W, C) uint8 array
-    key : str
-    encrypt_fn : callable(image, key) -> encrypted array (not a tuple)
-    n_trials : int
-        Number of random single-pixel modifications to average over.
-    seed : int
-        RNG seed for the chosen positions.
-
-    Returns
-    -------
-    dict with mean ``npcr`` and ``uaci`` (percent) over the trials, plus the
-    per-trial minimum and maximum NPCR.
-    """
     if n_trials <= 0:
         raise ValueError("n_trials must be positive.")
     baseline = encrypt_fn(image, key)
@@ -328,20 +180,6 @@ def measure_encryption_time(
     key: str,
     n_trials: int = 5,
 ) -> Dict[str, float]:
-    """Measure average encryption and decryption time.
-
-    Parameters
-    ----------
-    image : uint8 array
-    encrypt_fn : callable(image, key) -> (encrypted, meta)
-    decrypt_fn : callable(encrypted, key, meta) -> image
-    key : str
-    n_trials : int
-
-    Returns
-    -------
-    dict with ``encrypt_ms`` and ``decrypt_ms`` (milliseconds).
-    """
     enc_times = []
     dec_times = []
     for _ in range(n_trials):
@@ -365,19 +203,6 @@ def compute_all_security_metrics(
     key: Optional[str] = None,
     encrypt_fn: Optional[Callable] = None,
 ) -> Dict:
-    """Compute the full suite of security metrics.
-
-    Parameters
-    ----------
-    plaintext : uint8 array - original image
-    encrypted : uint8 array - encrypted image (same shape)
-    key : str, optional - required for key_sensitivity test
-    encrypt_fn : callable, optional - required for key_sensitivity test
-
-    Returns
-    -------
-    dict with all metric sub-dicts merged together.
-    """
     results: Dict = {}
 
     results["entropy"] = compute_entropy(encrypted)

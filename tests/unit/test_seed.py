@@ -1,9 +1,3 @@
-"""
-tests/unit/test_seed.py
-========================
-Unit tests for the reproducibility seed utilities.
-"""
-
 from __future__ import annotations
 
 import random

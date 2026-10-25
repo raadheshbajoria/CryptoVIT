@@ -1,5 +1,3 @@
-"""Tests for the demo-pack helpers: image selection and picture building."""
-
 from __future__ import annotations
 
 import importlib.util

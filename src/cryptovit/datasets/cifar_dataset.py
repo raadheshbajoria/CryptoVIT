@@ -1,24 +1,3 @@
-"""
-cryptovit/datasets/cifar_dataset.py
-====================================
-CIFAR-10 and CIFAR-100 dataset management for CryptoViT.
-
-Design principles
------------------
-* Pure PyTorch / torchvision - no Hugging Face dependency.
-* Deterministic train/val split derived from the fixed seed.
-* ``get_dataloaders`` is the single public entry point used by all
-  training and evaluation scripts.
-* Transforms are returned separately so the encrypted-dataset pipeline
-  (Phase 9) can reuse them without re-downloading.
-
-Normalisation statistics
-------------------------
-CIFAR-10  : mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010]
-CIFAR-100 : mean=[0.5071, 0.4867, 0.4408], std=[0.2675, 0.2565, 0.2761]
-Both are per-channel values computed on the respective training sets.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -50,17 +29,6 @@ _TORCHVISION_CLS = {
 
 
 def build_train_transform(cfg: DictConfig) -> transforms.Compose:
-    """Return the training-time augmentation pipeline.
-
-    Parameters
-    ----------
-    cfg:
-        Full project config (uses ``cfg.dataset`` and ``cfg.dataset.augmentation``).
-
-    Returns
-    -------
-    transforms.Compose
-    """
     aug = cfg.dataset.augmentation
     img_size: int = cfg.dataset.image_size
     stats = _get_stats(cfg)
@@ -90,17 +58,6 @@ def build_train_transform(cfg: DictConfig) -> transforms.Compose:
 
 
 def build_eval_transform(cfg: DictConfig) -> transforms.Compose:
-    """Return the deterministic evaluation transform (no augmentation).
-
-    Parameters
-    ----------
-    cfg:
-        Full project config.
-
-    Returns
-    -------
-    transforms.Compose
-    """
     aug = cfg.dataset.augmentation
     img_size: int = cfg.dataset.image_size
     stats = _get_stats(cfg)
@@ -116,7 +73,6 @@ def build_eval_transform(cfg: DictConfig) -> transforms.Compose:
 
 
 def _get_stats(cfg: DictConfig) -> Dict[str, List[float]]:
-    """Return normalisation statistics, preferring config overrides."""
     dataset_name = cfg.dataset.name
     aug = cfg.dataset.augmentation
     if hasattr(aug, "mean") and aug.mean and hasattr(aug, "std") and aug.std:
@@ -131,7 +87,6 @@ def _load_raw_dataset(
     transform: transforms.Compose,
     download: bool = True,
 ) -> Dataset:
-    """Instantiate a torchvision CIFAR dataset."""
     if dataset_name not in _TORCHVISION_CLS:
         raise ValueError(
             f"Unsupported dataset '{dataset_name}'. Choose from {list(_TORCHVISION_CLS)}."
@@ -141,11 +96,6 @@ def _load_raw_dataset(
 
 
 def get_dataset_targets(dataset: Dataset) -> List[int]:
-    """Class labels of a (possibly wrapped) dataset, without loading images.
-
-    Understands ``Subset``, encrypted-dataset wrappers (``base_dataset``) and
-    anything exposing ``targets`` (torchvision CIFAR, ``MedMNISTAdapter``).
-    """
     if isinstance(dataset, Subset):
         parent = get_dataset_targets(dataset.dataset)
         return [parent[i] for i in dataset.indices]
@@ -160,11 +110,6 @@ def get_dataset_targets(dataset: Dataset) -> List[int]:
 
 
 def get_split_indices(n_total: int, train_split: float, seed: int) -> Tuple[List[int], List[int]]:
-    """Deterministic train/validation index split of the official training set.
-
-    Shared by the plaintext and encrypted pipelines so that every experiment
-    variant trains and validates on exactly the same images.
-    """
     n_train = int(n_total * train_split)
     generator = torch.Generator().manual_seed(seed)
     train_idx, val_idx = random_split(
@@ -179,28 +124,6 @@ def get_dataloaders(
     download: bool = True,
     seed: int = 42,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """Create train, validation, and test DataLoaders.
-
-    The *training* split is obtained by performing a random split on the
-    official 50 000-image CIFAR training set using ``cfg.dataset.train_split``.
-    The *test* set uses the official 10 000-image CIFAR test split.
-
-    Parameters
-    ----------
-    cfg:
-        Project configuration (OmegaConf DictConfig).
-    data_root:
-        Directory where the raw dataset is stored / downloaded.
-        Defaults to ``cfg.paths.raw_dir`` resolved relative to the project root.
-    download:
-        Download the dataset if not present.
-    seed:
-        RNG seed for the train/val split.
-
-    Returns
-    -------
-    (train_loader, val_loader, test_loader)
-    """
     dataset_name: str = cfg.dataset.name
 
     from cryptovit.datasets.medmnist_dataset import (
@@ -281,22 +204,6 @@ def compute_dataset_stats(
     loader: DataLoader,
     n_batches: int = 100,
 ) -> Tuple[List[float], List[float]]:
-    """Empirically compute per-channel mean and std from a DataLoader.
-
-    Useful to verify that normalisation is applied correctly and to
-    compute stats for new datasets.
-
-    Parameters
-    ----------
-    loader:
-        DataLoader whose images are ``(B, C, H, W)`` float tensors.
-    n_batches:
-        Cap on the number of batches used (for speed).
-
-    Returns
-    -------
-    (mean_per_channel, std_per_channel)
-    """
     mean = torch.zeros(3)
     var = torch.zeros(3)
     n_pixels = 0
@@ -319,7 +226,6 @@ def compute_dataset_stats(
 
 
 def get_class_names(dataset_name: str) -> List[str]:
-    """Return ordered class names for CIFAR-10, CIFAR-100 or a MedMNIST dataset."""
     from cryptovit.datasets.medmnist_dataset import (
         is_medmnist,
         medmnist_class_names,

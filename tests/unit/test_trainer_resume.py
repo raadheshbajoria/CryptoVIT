@@ -1,5 +1,3 @@
-"""Tests that an interrupted training run resumes exactly where it stopped."""
-
 from __future__ import annotations
 
 import copy

@@ -1,20 +1,4 @@
 #!/usr/bin/env python
-"""
-scripts/emergency_pause.py
-===========================
-Hard safety net: if the GPU ever reaches the limit (default 90 C), freeze every
-guarded training job and keep it frozen until a person resumes it.
-
-    python scripts/emergency_pause.py --watch      # run the watchdog
-    python scripts/emergency_pause.py --resume     # undo a pause by hand
-
-It is independent of ``thermal_guard.py`` (the routine 80/70 C pacing). Freezing
-uses ``NtSuspendProcess``, whose suspend counts stack, so the guard's own
-resume cannot unfreeze a job this watchdog has frozen. Jobs are found through
-``train.pid`` files (re-read every cycle, so a job started later is frozen too
-while the pause is active). On a trigger a latch file is written; nothing
-resumes automatically.
-"""
 
 from __future__ import annotations
 
@@ -39,7 +23,6 @@ def _load_guard():
 
 
 def read_pids(pid_files: List[str]) -> List[int]:
-    """PIDs written in the given files / globs (unreadable entries are skipped)."""
     pids = []
     for pattern in pid_files:
         for path in glob.glob(pattern):
@@ -51,14 +34,11 @@ def read_pids(pid_files: List[str]) -> List[int]:
 
 
 class EmergencyState:
-    """Decision logic: trip once at/above the limit; never un-trip by itself."""
-
     def __init__(self, limit: float = 90.0):
         self.limit = limit
         self.tripped = False
 
     def update(self, temperature: Optional[float]) -> bool:
-        """True exactly when this reading trips the pause for the first time."""
         if not self.tripped and temperature is not None and temperature >= self.limit:
             self.tripped = True
             return True
@@ -66,7 +46,6 @@ class EmergencyState:
 
 
 def freeze_new_trees(guard, pids: List[int], already: Dict[int, Set[int]]) -> int:
-    """Freeze the process tree of every alive PID not frozen yet; returns the count."""
     newly = 0
     for pid in pids:
         if pid in already or not guard.process_alive(pid):
@@ -114,7 +93,6 @@ def watch(
 
 
 def resume(pid_files: List[str], latch: Path) -> int:
-    """Undo an emergency pause: unfreeze the guarded jobs and remove the latch."""
     guard = _load_guard()
     resumed = 0
     for pid in read_pids(pid_files):

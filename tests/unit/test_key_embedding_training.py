@@ -1,7 +1,3 @@
-"""Tests that the key embedding reaches the model in training and evaluation,
-that per-class metrics keep a fixed length, and the trainer's optimiser and
-schedule setup."""
-
 from __future__ import annotations
 
 import pytest
@@ -87,8 +83,6 @@ def test_trainer_without_key_embedding_leaves_key_mlp_untouched(tmp_path):
 
 
 class _RecordingModel(nn.Module):
-    """Stub that records whether key_embedding was passed."""
-
     def __init__(self, num_classes=3):
         super().__init__()
         self.fc = nn.Linear(3 * 4 * 4, num_classes)
@@ -141,7 +135,6 @@ def test_no_weight_decay_on_one_dimensional_params(tmp_path):
 
 
 def test_lr_schedule_completes_with_gradient_accumulation(tmp_path):
-    """With accumulation the schedule must still reach ~min_lr at the end."""
     model = nn.Sequential(nn.Flatten(), nn.Linear(3 * 4 * 4, 2))
     x = torch.randn(16, 3, 4, 4)
     y = torch.randint(0, 2, (16,))

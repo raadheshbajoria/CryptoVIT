@@ -1,6 +1,3 @@
-"""Tests for the encrypted data loaders: shared split, no test leakage,
-deterministic transform and encrypted-image normalisation statistics."""
-
 from __future__ import annotations
 
 import numpy as np
@@ -18,8 +15,6 @@ from cryptovit.utils import load_config
 
 
 class FakeCifar(Dataset):
-    """Smooth gradient images (strongly non-uniform pixel statistics)."""
-
     def __init__(self, n, seed=0):
         rng = np.random.default_rng(seed)
         yy, xx = np.mgrid[0:32, 0:32]

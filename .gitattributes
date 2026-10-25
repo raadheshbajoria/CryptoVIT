@@ -1,7 +1,4 @@
-# Normalize line endings to LF in the repository
 * text=auto eol=lf
-
-# Explicitly declare text files
 *.py text eol=lf
 *.yaml text eol=lf
 *.toml text eol=lf
@@ -9,8 +6,6 @@
 *.cfg text eol=lf
 *.ini text eol=lf
 *.txt text eol=lf
-
-# Binary files — do not touch
 *.pt binary
 *.npy binary
 *.gz binary

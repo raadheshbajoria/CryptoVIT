@@ -1,17 +1,3 @@
-"""
-cryptovit/datasets/medmnist_dataset.py
-========================================
-MedMNIST (https://medmnist.com) loading for CryptoViT.
-
-MedMNIST provides small, standardised medical-image classification datasets
-with fixed official train / val / test splits. Only single-label classification
-datasets are supported here (multi-label ChestMNIST and ordinal RetinaMNIST are
-not). All images are converted to RGB so grayscale datasets (X-ray, OCT) work
-with the 3-channel models.
-
-MedMNIST is for research benchmarking and is not intended for clinical use.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -40,22 +26,6 @@ def is_medmnist(dataset_name: str) -> bool:
 
 
 class MedMNISTAdapter(Dataset):
-    """Uniform ``(PIL RGB image, int label)`` view of a MedMNIST split.
-
-    MedMNIST returns labels as 1-element arrays and keeps grayscale images
-    single-channel; this adapter flattens the label to ``int`` and converts the
-    image to RGB so it behaves like the CIFAR datasets elsewhere in the code.
-
-    Parameters
-    ----------
-    base:
-        A ``medmnist`` dataset built *without* a transform, or any object with
-        ``__len__``, ``__getitem__`` returning ``(PIL image, label array)`` and
-        a ``labels`` array.
-    transform:
-        Optional torchvision transform applied to the RGB PIL image.
-    """
-
     def __init__(self, base: Dataset, transform: Optional[Callable] = None):
         self.base = base
         self.transform = transform
@@ -81,13 +51,12 @@ def _medmnist_class(dataset_name: str):
         )
     try:
         import medmnist
-    except ImportError as exc:  # pragma: no cover - environment dependent
+    except ImportError as exc:
         raise ImportError("The 'medmnist' package is required: pip install medmnist") from exc
     return getattr(medmnist, MEDMNIST_DATASETS[dataset_name][0])
 
 
 def medmnist_class_names(dataset_name: str) -> List[str]:
-    """Class names in label-index order, from the official MedMNIST metadata."""
     import medmnist
 
     labels = medmnist.INFO[dataset_name]["label"]
@@ -100,7 +69,6 @@ def load_medmnist_splits(
     size: int = 28,
     download: bool = True,
 ) -> Tuple[MedMNISTAdapter, MedMNISTAdapter, MedMNISTAdapter]:
-    """Load the official train / val / test splits as transform-free adapters."""
     cls = _medmnist_class(dataset_name)
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
@@ -114,7 +82,7 @@ def load_medmnist_splits(
         size,
         *(len(s) for s in splits),
     )
-    return tuple(splits)  # type: ignore[return-value]
+    return tuple(splits)
 
 
 def get_medmnist_dataloaders(
@@ -123,7 +91,6 @@ def get_medmnist_dataloaders(
     download: bool = True,
     seed: int = 42,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """Train / val / test loaders using the *official* MedMNIST splits."""
     from cryptovit.datasets.cifar_dataset import (
         build_eval_transform,
         build_train_transform,
@@ -164,7 +131,6 @@ def get_medmnist_dataloaders(
 def compute_channel_stats(
     images: Sequence[Image.Image],
 ) -> Dict[str, List[float]]:
-    """Per-channel mean/std (0-1 scale) of RGB PIL images."""
     arr = np.stack([np.asarray(im.convert("RGB"), dtype=np.float64) for im in images])
     arr /= 255.0
     return {

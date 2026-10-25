@@ -1,9 +1,3 @@
-"""
-tests/unit/test_api.py
-======================
-Unit tests for the FastAPI inference and encryption API endpoints.
-"""
-
 from __future__ import annotations
 
 import io

@@ -1,29 +1,3 @@
-"""
-cryptovit/models/cryptovit.py
-================================
-Full CryptoViT model - combining:
-  * CryptoPatchEmbedding   (Phase 9)
-  * KeyAwarePositionalEncoding  (Phase 10)
-  * Standard Transformer Encoder (from vit.py)
-  * Classification Head
-
-CryptoViT accepts encrypted images (same shape as plaintext CIFAR images)
-and optionally a key_embedding tensor for the key-aware positional encoding.
-
-Usage
------
-    from cryptovit.models.cryptovit import CryptoViT, build_cryptovit
-
-    model = build_cryptovit(cfg)
-    key_emb = KeyAwarePositionalEncoding.key_to_embedding("secret").to(device)
-
-    # Training (with key)
-    logits = model(encrypted_batch, key_embedding=key_emb)
-
-    # Inference without key (fallback to standard PE)
-    logits = model(encrypted_batch)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -41,33 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class CryptoViT(nn.Module):
-    """Vision Transformer designed for encrypted / protected image classification.
-
-    Differences from standard ViT:
-    1. ``CryptoPatchEmbedding`` with a conv front-end instead of a plain Conv2d.
-    2. ``KeyAwarePositionalEncoding`` - learnable PE + optional key-derived offset.
-    3. Same transformer encoder and classification head as standard ViT.
-
-    Parameters
-    ----------
-    image_size : int
-    patch_size : int
-    in_channels : int
-    num_classes : int
-    embed_dim : int
-    depth : int
-    num_heads : int
-    mlp_ratio : float
-    dropout : float
-    attn_dropout : float
-    drop_path_rate : float
-    pool : {"cls", "mean"}
-    hidden_dim : int
-        Convolutional hidden channels in CryptoPatchEmbedding.
-    key_embed_dim : int
-        Dimensionality of the key embedding (default 256).
-    """
-
     def __init__(
         self,
         image_size: int = 224,
@@ -152,17 +99,6 @@ class CryptoViT(nn.Module):
         x: torch.Tensor,
         key_embedding: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        x : (B, C, H, W) - encrypted image batch (uint8 or float)
-        key_embedding : (1, key_embed_dim) or (B, key_embed_dim) float tensor.
-            If None, standard learnable PE is used (no key modulation).
-
-        Returns
-        -------
-        logits : (B, num_classes)
-        """
         B = x.shape[0]
 
         x = self.patch_embed(x)
@@ -188,7 +124,6 @@ class CryptoViT(nn.Module):
         x: torch.Tensor,
         key_embedding: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Return pooled features before classification head."""
         B = x.shape[0]
         x = self.patch_embed(x)
         cls = self.cls_token.expand(B, -1, -1)
@@ -201,16 +136,6 @@ class CryptoViT(nn.Module):
 
 
 def build_cryptovit(cfg: DictConfig) -> CryptoViT:
-    """Build a CryptoViT model from a project configuration.
-
-    Parameters
-    ----------
-    cfg : OmegaConf DictConfig - full project config.
-
-    Returns
-    -------
-    CryptoViT
-    """
     m = cfg.model
     model = CryptoViT(
         image_size=m.image_size,

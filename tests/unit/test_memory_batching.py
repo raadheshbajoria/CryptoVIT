@@ -1,5 +1,3 @@
-"""Tests for memory-safe batching used by the CryptoPatchEmbedding variants."""
-
 from __future__ import annotations
 
 import importlib.util

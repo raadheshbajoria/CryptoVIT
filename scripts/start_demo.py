@@ -1,18 +1,4 @@
 #!/usr/bin/env python
-"""
-scripts/start_demo.py
-======================
-Start the API and the dashboard for the skin-lesion demo with one command.
-
-    python scripts/start_demo.py                  # per-pixel scheme (default models)
-    python scripts/start_demo.py --block 2        # models trained with the block2 scheme
-    python scripts/start_demo.py --dry-run        # only print what would be started
-
-The API runs on CPU by default so it does not compete with training for the
-GPU; use ``--device cuda`` to change that. Press Ctrl+C to stop both.
-
-Research prototype only. Not a medical device; not for clinical use.
-"""
 
 from __future__ import annotations
 
@@ -63,7 +49,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 
 
 def build_launch_plan(args: argparse.Namespace) -> Dict:
-    """Environment variables and the two commands to run (no side effects)."""
     configs: List[str] = [args.dataset_config]
     experiments = args.experiments or f"experiments/{args.dataset_config}"
     if args.block is not None:

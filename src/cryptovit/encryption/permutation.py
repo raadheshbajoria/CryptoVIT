@@ -1,22 +1,3 @@
-"""
-cryptovit/encryption/permutation.py
-=====================================
-Pixel-level and channel-wise image permutation (scrambling).
-
-Strategy
---------
-1. The image (H, W, C) is processed channel-by-channel.
-2. For each channel, the HxW pixel array is flattened and reordered
-   by a chaotic permutation index derived from the key.
-3. The inverse operation exactly restores the original pixel arrangement.
-
-All operations are on uint8 numpy arrays (pixel values 0-255) so no
-precision is lost during permutation.
-
-Note: permutation alone destroys spatial layout but does not change
-pixel values.  DNA diffusion (Phase 4) is needed to change values.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -30,21 +11,6 @@ def permute_image(
     image: np.ndarray,
     perm: np.ndarray,
 ) -> np.ndarray:
-    """Scramble an image using a pre-computed permutation index array.
-
-    Parameters
-    ----------
-    image : (H, W, C) or (H, W) uint8 numpy array
-        Input image (values 0-255).
-    perm : (H * W,) or (C, H * W) int array
-        Permutation of [0, H*W). A 1-D array is applied to every channel; a
-        2-D array applies row ``c`` to channel ``c`` (independent per-channel
-        permutations, encryption scheme ``"v2"``).
-
-    Returns
-    -------
-    scrambled : same shape and dtype as ``image``
-    """
     _check_uint8(image)
     H, W = image.shape[:2]
     C = 1 if image.ndim == 2 else image.shape[2]
@@ -64,19 +30,6 @@ def inverse_permute_image(
     scrambled: np.ndarray,
     perm: np.ndarray,
 ) -> np.ndarray:
-    """Restore an image that was scrambled with ``permute_image``.
-
-    Parameters
-    ----------
-    scrambled : (H, W, C) or (H, W) uint8 numpy array
-        Permuted (scrambled) image.
-    perm : (H * W,) or (C, H * W) int array
-        The *same* permutation(s) used during encryption.
-
-    Returns
-    -------
-    restored : same shape and dtype as ``scrambled``
-    """
     _check_uint8(scrambled)
     H, W = scrambled.shape[:2]
     n = H * W
@@ -103,21 +56,6 @@ def permute_blocks(
     block_size: int,
     perm: np.ndarray,
 ) -> np.ndarray:
-    """Block-level permutation: shuffle non-overlapping ``block_sizexblock_size`` tiles.
-
-    The image is divided into tiles; tiles are reordered according to ``perm``.
-    This provides coarser-grained scrambling than pixel-level permutation.
-
-    Parameters
-    ----------
-    image : (H, W, C) uint8 array - H and W must be divisible by block_size.
-    block_size : int
-    perm : (n_blocks,) int array - permutation of [0, n_blocks)
-
-    Returns
-    -------
-    scrambled : (H, W, C) uint8 array
-    """
     _check_uint8(image)
     H, W, C = image.shape if image.ndim == 3 else (*image.shape, 1)
     bH, bW = H // block_size, W // block_size
@@ -145,7 +83,6 @@ def inverse_permute_blocks(
     block_size: int,
     perm: np.ndarray,
 ) -> np.ndarray:
-    """Inverse of ``permute_blocks``."""
     n_blocks = len(perm)
     inv_perm = np.empty(n_blocks, dtype=perm.dtype)
     inv_perm[perm] = np.arange(n_blocks, dtype=perm.dtype)
@@ -153,7 +90,6 @@ def inverse_permute_blocks(
 
 
 def _channel_perms(perm: np.ndarray, n: int, channels: int) -> list:
-    """Normalise ``perm`` to one length-``n`` permutation per channel."""
     perm = np.asarray(perm)
     if perm.ndim == 1:
         rows = [perm] * channels

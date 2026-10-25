@@ -1,10 +1,3 @@
-"""Equivalence tests: optimised encryption must match the original definition.
-
-The reference implementations below are the original sequential loops. The
-vectorised chained XOR and the cached key streams must reproduce them bit for
-bit, otherwise previously encrypted data would no longer decrypt.
-"""
-
 import numpy as np
 import pytest
 
@@ -57,7 +50,6 @@ def test_chain_xor_round_trip(n):
 
 
 def test_encrypt_matches_uncached_derivation():
-    """encrypt() with cached streams equals a fresh per-call derivation."""
     rng = np.random.default_rng(0)
     image = rng.integers(0, 256, (8, 8, 3), dtype=np.uint8)
     key = "equivalence-key"

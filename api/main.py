@@ -1,37 +1,3 @@
-"""
-api/main.py
-============
-FastAPI inference backend for CryptoViT.
-
-Endpoints
----------
-GET  /health              - Health check, task and model status
-POST /encrypt             - Upload an image, receive its encrypted version
-POST /decrypt             - Decrypt an image (returns plaintext for demo only)
-POST /predict             - Classify an image encrypted with the given key
-POST /predict_plaintext   - Classify a plaintext image (variant A)
-POST /compare             - Predictions of all loaded variants for one image
-GET  /results             - Test results of the trained variants (result_*.json)
-GET  /metrics             - Security metrics for the last processed image
-GET  /model_info          - Model parameter counts
-
-Running (skin-lesion demo, DermaMNIST)
---------------------------------------
-    set CRYPTOVIT_CONFIG=dermamnist
-    set CRYPTOVIT_EXPERIMENTS=experiments/dermamnist
-    python -m uvicorn api.main:app --port 8000
-
-Environment variables (all optional)
-------------------------------------
-    CRYPTOVIT_CONFIG       config name(s) to merge, e.g. ``dermamnist`` or
-                           ``dermamnist,block2`` (comma separated)
-    CRYPTOVIT_EXPERIMENTS  experiments directory holding ``ablation/variant_X``
-    CRYPTOVIT_DEVICE       ``cpu`` or ``cuda`` (default: from the config)
-    CRYPTOVIT_VARIANT      encrypted variant used by /predict (default ``D``)
-
-Research prototype only. Not a medical device; not for clinical use.
-"""
-
 from __future__ import annotations
 
 import io
@@ -111,13 +77,11 @@ app = FastAPI(
 
 
 def _pil_to_numpy(img: Image.Image, target_size: int = 32) -> np.ndarray:
-    """Resize PIL image and return HWC uint8 numpy array."""
     img = img.resize((target_size, target_size), Image.LANCZOS).convert("RGB")
     return np.array(img, dtype=np.uint8)
 
 
 def _image_to_bytes(img_np: np.ndarray) -> bytes:
-    """Convert HWC uint8 numpy array to PNG bytes."""
     pil = Image.fromarray(img_np)
     buf = io.BytesIO()
     pil.save(buf, format="PNG")
@@ -125,7 +89,6 @@ def _image_to_bytes(img_np: np.ndarray) -> bytes:
 
 
 def _load_upload(img_bytes: bytes) -> np.ndarray:
-    """Decode an uploaded image to the size the models were trained at."""
     return _pil_to_numpy(Image.open(io.BytesIO(img_bytes)), _service.native_size)
 
 
@@ -158,11 +121,6 @@ async def encrypt_image(
     file: UploadFile = File(...),
     key: str = Form(default=ENCRYPTION_KEY),
 ):
-    """Encrypt an uploaded image.
-
-    Returns the encrypted image as a PNG file.
-    Also computes and stores security metrics for /metrics.
-    """
     global _last_metrics
     svc = _require_service()
 
@@ -192,12 +150,6 @@ async def decrypt_image(
     file: UploadFile = File(...),
     key: str = Form(default=ENCRYPTION_KEY),
 ):
-    """Decrypt an encrypted image (authorised demo endpoint).
-
-    WARNING: In a production system this endpoint would not exist.
-    It is included only for demonstration purposes. With a wrong key the
-    result is a scrambled image, not an error.
-    """
     svc = _require_service()
     try:
         pil = Image.open(io.BytesIO(await file.read()))
@@ -215,12 +167,6 @@ async def predict_encrypted(
     encrypt_first: bool = Form(default=True),
     variant: Optional[str] = Form(default=None),
 ):
-    """Classify an image with an encrypted-image model (default: CryptoViT, D).
-
-    If ``encrypt_first=True`` (default), the uploaded plaintext image is
-    encrypted with ``key`` before classification. If False, the image is
-    assumed to be already encrypted.
-    """
     svc = _require_service()
     try:
         img_np = _load_upload(await file.read())
@@ -240,7 +186,6 @@ async def predict_encrypted(
 
 @app.post("/predict_plaintext")
 async def predict_plaintext(file: UploadFile = File(...)):
-    """Classify a plaintext image with the baseline ViT (variant A)."""
     svc = _require_service()
     try:
         return JSONResponse(content=svc.predict_plaintext(_load_upload(await file.read())))
@@ -255,11 +200,6 @@ async def compare_variants(
     file: UploadFile = File(...),
     key: str = Form(default=ENCRYPTION_KEY),
 ):
-    """Predictions of every loaded variant for one image.
-
-    Variant A classifies the plaintext; B, C and D classify the image
-    encrypted with ``key``.
-    """
     svc = _require_service()
     try:
         return JSONResponse(content=svc.compare(_load_upload(await file.read()), key))
@@ -269,7 +209,6 @@ async def compare_variants(
 
 @app.get("/results")
 async def get_results():
-    """Held-out test results of the trained variants (from result_*.json)."""
     _require_service()
     results = read_results(_ablation_dir)
     if not results:
@@ -279,7 +218,6 @@ async def get_results():
 
 @app.get("/metrics")
 async def get_metrics():
-    """Return security metrics from the last /encrypt call."""
     if not _last_metrics:
         raise HTTPException(status_code=404, detail="No metrics available. Call /encrypt first.")
     return JSONResponse(content=json.loads(json.dumps(_last_metrics, default=float)))
@@ -287,7 +225,6 @@ async def get_metrics():
 
 @app.get("/model_info")
 async def model_info():
-    """Return model parameter counts per loaded variant."""
     svc = _require_service()
     info = {}
     for name, model in svc.models.items():

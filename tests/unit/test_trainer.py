@@ -1,9 +1,3 @@
-"""
-tests/unit/test_trainer.py
-==========================
-Unit tests for the training loop, learning rate schedule, and checkpoint manager.
-"""
-
 from __future__ import annotations
 
 import torch

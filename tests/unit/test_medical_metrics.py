@@ -1,6 +1,3 @@
-"""Tests for the medical-style metrics (balanced accuracy, sensitivity,
-specificity, AUC), class-weighted loss and balanced-accuracy checkpointing."""
-
 from __future__ import annotations
 
 import numpy as np
@@ -18,8 +15,6 @@ from cryptovit.training.trainer import balanced_class_weights, build_class_weigh
 
 
 class Identity(nn.Module):
-    """Model whose input already is the logits (lets tests dictate predictions)."""
-
     def forward(self, x, key_embedding=None):
         return x
 

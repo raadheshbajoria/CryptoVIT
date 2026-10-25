@@ -1,24 +1,3 @@
-"""
-dashboard/app.py
-==================
-Streamlit demonstration interface for CryptoViT.
-
-Demonstrates:
-  1. Upload a plaintext image
-  2. Encrypt it with hyperchaotic encryption
-  3. Classify the encrypted image with CryptoViT
-  4. Show security metrics panel
-  5. Compare with plaintext baseline ViT
-
-Running
--------
-    streamlit run dashboard/app.py
-
-Or with API backend:
-    # Start API: uvicorn api.main:app --port 8000
-    # Then: streamlit run dashboard/app.py
-"""
-
 from __future__ import annotations
 
 import io
@@ -298,7 +277,6 @@ if img_bytes is not None:
                     )
 
     def _comparison_rows(data: dict) -> list:
-        """Table rows: the plaintext model first, then the encrypted-image models."""
         rows = []
         plain = data.get("plaintext")
         if plain:

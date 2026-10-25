@@ -1,5 +1,3 @@
-"""Tests for the block-wise learnable encryption scheme (block<B>)."""
-
 from __future__ import annotations
 
 from collections import Counter
@@ -67,9 +65,6 @@ def test_inputs_are_not_modified():
 
 
 def test_blocks_are_only_moved_and_inverted_not_mixed():
-    """Every output block holds exactly the values of one input block, or of its
-    negative; nothing is mixed between blocks (the property that keeps patches
-    learnable)."""
     block = 2
     img = _img((8, 8, 3), seed=4)
     enc = block_encrypt(img, KEY, block, STEPS)
@@ -89,7 +84,6 @@ def test_blocks_are_only_moved_and_inverted_not_mixed():
 
 
 def test_no_diffusion_is_a_documented_limitation():
-    """One changed input pixel changes exactly one output pixel."""
     img = _img((28, 28, 3), seed=7)
     changed = img.copy()
     changed[5, 9, 1] ^= 1

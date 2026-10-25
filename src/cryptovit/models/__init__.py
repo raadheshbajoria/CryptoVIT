@@ -1,19 +1,3 @@
-"""
-cryptovit/models/__init__.py
-============================
-Model factory for CryptoViT.
-
-Provides a single ``build_model(cfg)`` entry-point that constructs the
-correct model variant based on the configuration key ``cfg.model.name``.
-
-Supported names
----------------
-* ``vit_tiny``   - embed_dim=96,  depth=4, num_heads=3
-* ``vit_small``  - embed_dim=192, depth=6, num_heads=3  (default)
-* ``vit_base``   - embed_dim=384, depth=8, num_heads=6
-* ``cryptovit``  - full CryptoViT (CryptoPatchEmbedding + KeyAwarePE)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -43,18 +27,6 @@ _VIT_PRESETS = {
 
 
 def build_model(cfg: DictConfig) -> "nn.Module":
-    """Construct the model specified by ``cfg.model.name``.
-
-    Parameters
-    ----------
-    cfg:
-        Full project configuration (OmegaConf DictConfig).
-
-    Returns
-    -------
-    nn.Module
-        Instantiated model.
-    """
     name: str = cfg.model.name.lower()
 
     if name in _VIT_PRESETS:

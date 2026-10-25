@@ -1,6 +1,3 @@
-"""API tests for the medical (DermaMNIST) configuration: class names, variant
-status, trained-checkpoint loading, /compare, /results and key behaviour."""
-
 from __future__ import annotations
 
 import io
@@ -33,7 +30,6 @@ def _files(data: bytes):
 
 @pytest.fixture
 def medical_client(tmp_path, monkeypatch):
-    """Client configured for DermaMNIST with an empty experiments directory."""
     monkeypatch.setenv("CRYPTOVIT_CONFIG", "dermamnist")
     monkeypatch.setenv("CRYPTOVIT_EXPERIMENTS", str(tmp_path))
     monkeypatch.setenv("CRYPTOVIT_DEVICE", "cpu")

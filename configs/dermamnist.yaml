@@ -1,18 +1,8 @@
-# configs/dermamnist.yaml
-# DermaMNIST (7 skin-lesion classes) for the medical experiments.
-# Use with:  python scripts/run_ablation.py config=dermamnist
-#
-# Normalisation statistics were computed on the DermaMNIST *training* split
-# (28x28, RGB, 0-1 scale).
-
 dataset:
   name: dermamnist
   num_classes: 7
-  medmnist_size: 28          # native image size; upscaled to dataset.image_size
+  medmnist_size: 28
   augmentation:
-    # Encrypted images cannot be cropped/flipped meaningfully, so the plaintext
-    # baseline (variant A) is also trained without augmentation to keep the
-    # four variants comparable.
     random_crop: false
     random_horizontal_flip: false
     mean: [0.7631, 0.5381, 0.5614]
@@ -22,7 +12,5 @@ model:
   num_classes: 7
 
 training:
-  # 67% of the training images are one class (melanocytic nevi). Balance the
-  # loss and pick checkpoints by balanced accuracy instead of plain accuracy.
   class_weights: balanced
   select_metric: balanced_accuracy

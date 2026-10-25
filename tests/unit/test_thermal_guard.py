@@ -1,6 +1,3 @@
-"""Tests for the thermal guard: the hysteresis logic and, on Windows, real
-suspend/resume of a child process tree."""
-
 from __future__ import annotations
 
 import importlib.util

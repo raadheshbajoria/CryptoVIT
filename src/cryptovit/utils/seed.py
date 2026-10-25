@@ -1,10 +1,3 @@
-"""
-cryptovit/utils/seed.py
-=======================
-Reproducibility helpers: set global random seeds across Python, NumPy,
-and PyTorch (CPU and CUDA) from a single integer.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -15,20 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 def set_seed(seed: int) -> None:
-    """Fix all relevant RNG seeds for reproducibility.
-
-    Parameters
-    ----------
-    seed:
-        Non-negative integer seed value.
-
-    Notes
-    -----
-    * ``torch.backends.cudnn.deterministic = True`` may reduce throughput
-      slightly but ensures identical results across runs.
-    * ``PYTHONHASHSEED`` is set so that Python dict ordering and set
-      iteration are deterministic within the same process.
-    """
     if seed < 0:
         raise ValueError(f"Seed must be non-negative, got {seed}.")
 

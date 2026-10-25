@@ -1,31 +1,3 @@
-"""
-cryptovit/encryption/diffusion.py
-===================================
-DNA-based diffusion stage of the CryptoViT encryption pipeline.
-
-Algorithm (forward / encrypt)
-------------------------------
-1. Convert the permuted image to DNA representation (per channel).
-2. Convert the key-stream bytes to DNA using a secondary rule.
-3. Apply DNA XOR between the image DNA and the key-stream DNA.
-4. Decode the result back to uint8 pixel values.
-5. Apply a chained byte XOR pass for extra diffusion strength.
-
-The chaining ensures that each output pixel depends on all previous
-output pixels (avalanche effect), giving high NPCR and UACI values.
-
-Algorithm (inverse / decrypt)
-------------------------------
-The reverse: undo the chained XOR, then undo the DNA XOR.
-
-All operations are lossless; decrypt(encrypt(img, kg), kg) == img exactly.
-
-Parameters
-----------
-The ``KeyGenerator`` instance provides both the pixel key-stream
-(for DNA XOR) and the rule selector (for DNA encoding rules).
-"""
-
 from __future__ import annotations
 
 import logging
@@ -42,21 +14,6 @@ def diffuse(
     keystream: np.ndarray,
     rule_seq: np.ndarray,
 ) -> np.ndarray:
-    """Apply DNA XOR diffusion to an image.
-
-    Parameters
-    ----------
-    image : (H, W, C) or (H, W) uint8 array
-        Permuted image to diffuse.
-    keystream : (H * W) uint8 array
-        Key-stream bytes from ``KeyGenerator.diffusion_keystream``.
-    rule_seq : (H * W) uint8 array [values 0-7]
-        Per-pixel DNA rule from ``KeyGenerator.dna_rule_sequence``.
-
-    Returns
-    -------
-    diffused : same shape and dtype as ``image``
-    """
     _validate_inputs(image, keystream, rule_seq)
     H, W = image.shape[:2]
     n = H * W
@@ -93,18 +50,6 @@ def inverse_diffuse(
     keystream: np.ndarray,
     rule_seq: np.ndarray,
 ) -> np.ndarray:
-    """Reverse the DNA diffusion stage.
-
-    Parameters
-    ----------
-    diffused : (H, W, C) or (H, W) uint8 array
-    keystream : (H * W) uint8 array  - same as used during encryption
-    rule_seq  : (H * W) uint8 array  - same as used during encryption
-
-    Returns
-    -------
-    image : same shape and dtype
-    """
     _validate_inputs(diffused, keystream, rule_seq)
     H, W = diffused.shape[:2]
     n = H * W
@@ -136,11 +81,6 @@ def inverse_diffuse(
 
 
 def _chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
-    """Forward chained XOR: out[i] = data[i] XOR key[i] XOR out[i-1].
-
-    out[-1] is initialised to key[-1] (last key byte) to avoid
-    a trivially predictable starting condition.
-    """
     n = len(data)
     if n == 0:
         return np.empty(0, dtype=np.uint8)
@@ -149,7 +89,6 @@ def _chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
 
 
 def _inverse_chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
-    """Inverse of ``_chain_xor``: out[i] = data[i] ^ key[i] ^ data[i-1]."""
     n = len(data)
     if n == 0:
         return np.empty(0, dtype=np.uint8)

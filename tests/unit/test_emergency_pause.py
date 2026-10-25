@@ -1,6 +1,3 @@
-"""Tests for the emergency pause: trip logic, and on Windows a real freeze that
-the routine guard cannot undo, plus manual resume."""
-
 from __future__ import annotations
 
 import importlib.util

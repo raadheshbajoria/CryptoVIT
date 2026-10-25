@@ -1,23 +1,3 @@
-"""
-cryptovit/inference/pipeline.py
-=================================
-Inference service shared by the API (and usable from scripts).
-
-It loads the trained ablation variants and classifies images:
-
-    A  plain ViT on the plaintext image
-    B  plain ViT on the encrypted image
-    C  ViT + CryptoPatchEmbedding on the encrypted image
-    D  CryptoViT (CryptoPatchEmbedding + key-aware positional encoding)
-
-Encrypted variants are fed images encrypted with the *same key and scheme the
-models were trained with*; a different key produces scrambled input the model
-has never seen, so predictions become unreliable. That is expected behaviour,
-and the demo uses it to show what the key does.
-
-Research prototype only: not a medical device and not for clinical use.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -53,7 +33,6 @@ _CKPT_PATTERN = re.compile(r"checkpoint_epoch(\d+)_acc([0-9.]+)\.pt$")
 
 
 def build_variant_model(name: str, cfg: DictConfig) -> nn.Module:
-    """Build the (untrained) model for ablation variant ``name``."""
     from cryptovit.models.cryptovit import CryptoViT
     from cryptovit.models.patch_embedding import CryptoPatchEmbedding
     from cryptovit.models.vit import VisionTransformer
@@ -83,10 +62,6 @@ def build_variant_model(name: str, cfg: DictConfig) -> nn.Module:
 
 
 def find_best_checkpoint(checkpoint_dir: Path) -> Optional[Path]:
-    """Best ``checkpoint_epoch*_acc*.pt`` (highest score, later epoch on ties).
-
-    ``last.pt`` is a resume file, not a selected model, so it is ignored.
-    """
     best: Optional[Tuple[float, int, Path]] = None
     for path in Path(checkpoint_dir).glob("checkpoint_epoch*_acc*.pt"):
         match = _CKPT_PATTERN.search(path.name)
@@ -99,7 +74,6 @@ def find_best_checkpoint(checkpoint_dir: Path) -> Optional[Path]:
 
 
 def read_results(ablation_dir: Path) -> List[Dict]:
-    """Load ``result_<variant>.json`` files written by ``run_ablation.py``."""
     out = []
     for variant in VARIANT_INFO:
         path = Path(ablation_dir) / f"result_{variant}.json"
@@ -112,22 +86,6 @@ def read_results(ablation_dir: Path) -> List[Dict]:
 
 
 class ClassifierService:
-    """Loads trained variants and classifies plaintext / encrypted images.
-
-    Parameters
-    ----------
-    cfg:
-        Project configuration the models were trained with.
-    device:
-        Torch device for inference.
-    ablation_dir:
-        Directory holding ``variant_<X>/checkpoints`` (from ``run_ablation.py``).
-    train_key:
-        The encryption key the encrypted variants were trained with.
-    preferred_variant:
-        Encrypted variant used by ``predict_encrypted`` when none is given.
-    """
-
     def __init__(
         self,
         cfg: DictConfig,
@@ -148,12 +106,6 @@ class ClassifierService:
         self._encrypted_stats: Optional[Dict] = None
 
     def load(self) -> None:
-        """Load the best checkpoint of every variant that has one.
-
-        Variants A and D are always built (untrained if no checkpoint exists)
-        so the API still starts before any training has happened; B and C are
-        only loaded from checkpoints.
-        """
         for name in VARIANT_INFO:
             ckpt = find_best_checkpoint(self.ablation_dir / f"variant_{name}" / "checkpoints")
             if ckpt is None and name not in ("A", "D"):
@@ -181,7 +133,6 @@ class ClassifierService:
 
     @property
     def native_size(self) -> int:
-        """Side length images are reduced to before encryption (as in training)."""
         from cryptovit.datasets.medmnist_dataset import is_medmnist
 
         if is_medmnist(self.cfg.dataset.name):
@@ -200,12 +151,6 @@ class ClassifierService:
         }
 
     def encrypted_stats(self) -> Dict[str, List[float]]:
-        """Per-channel mean/std of encrypted training images (cached on disk).
-
-        Must equal the statistics used in training, which are computed with
-        ``compute_encrypted_stats`` over the first 2000 training images; the
-        same call reproduces them exactly.
-        """
         if self._encrypted_stats is not None:
             return self._encrypted_stats
 
@@ -269,7 +214,6 @@ class ClassifierService:
         return _get_stats(self.cfg)
 
     def to_tensor(self, img_np: np.ndarray, encrypted: bool) -> torch.Tensor:
-        """HWC uint8 -> (1, 3, S, S) normalised tensor, as in training."""
         from cryptovit.datasets.encrypted_dataset import build_encrypted_transform
 
         stats = self.encrypted_stats() if encrypted else self.plaintext_stats()
@@ -334,10 +278,6 @@ class ClassifierService:
         return self._classify(variant, self.to_tensor(enc, encrypted=True), key)
 
     def compare(self, img_np: np.ndarray, key: str) -> Dict:
-        """Predictions of every loaded variant for one image.
-
-        A sees the plaintext; B, C and D see the image encrypted with ``key``.
-        """
         out: Dict = {"plaintext": None, "encrypted": {}}
         if "A" in self.models:
             out["plaintext"] = self.predict_plaintext(img_np)

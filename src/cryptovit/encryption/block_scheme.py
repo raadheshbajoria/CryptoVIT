@@ -1,39 +1,3 @@
-"""
-cryptovit/encryption/block_scheme.py
-======================================
-Block-wise "learnable" image encryption (schemes ``block<B>``, e.g. ``block2``).
-
-Why this exists
----------------
-The default scheme mixes every pixel (permutation + DNA-XOR + chained XOR).
-That protects the picture strongly but also destroys what a Vision
-Transformer learns from, and models trained on it classify poorly. This scheme
-keeps the structure a ViT can use while still hiding the picture:
-
-  1. channel permutation      - the colour channels are reordered,
-  2. block negative/positive  - each B x B block is optionally inverted
-                                (value v -> 255 - v) by a key bit,
-  3. in-block pixel shuffle   - the B*B pixels inside every block are shuffled
-                                with one key-derived permutation,
-  4. block shuffle            - the blocks themselves are permuted.
-
-Every step is a bijection, so decryption is exact. Steps 1-3 are linear or
-affine in the pixel values and step 4 only moves whole patches, so a ViT whose
-patch size equals the block size can learn the fixed scrambling (the patch
-embedding absorbs 1-3, the learnable positional embedding absorbs 4).
-
-What it is and is not
----------------------
-It gives *visual* protection: the picture is unrecognisable and the key is
-needed to restore it. It is NOT cryptographically strong: there is no
-diffusion (changing one pixel changes one pixel of the output), pixel-value
-histograms are preserved (up to the inversion), and the same scrambling is used
-for every image under one key. It trades security for classifiability and is
-meant for the research question "how much accuracy survives encryption".
-
-All streams come from the hyperchaotic system seeded with SHA-256(key + tag).
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -52,7 +16,6 @@ _SCHEME_PATTERN = re.compile(r"^block(\d+)$")
 
 
 def parse_block_scheme(scheme: str) -> Optional[int]:
-    """Block size for a scheme name like ``"block2"``; ``None`` if not a block scheme."""
     match = _SCHEME_PATTERN.match(scheme)
     if not match:
         return None
@@ -63,8 +26,6 @@ def parse_block_scheme(scheme: str) -> Optional[int]:
 
 
 class BlockStreams(NamedTuple):
-    """Key-derived parameters for one (key, image size, block size)."""
-
     block_perm: np.ndarray
     pixel_perm: np.ndarray
     channel_perm: np.ndarray
@@ -80,7 +41,6 @@ def derive_block_streams(
     block: int,
     transient_steps: int = 1000,
 ) -> BlockStreams:
-    """Derive the scrambling parameters. Cached; arrays are read-only."""
     if height % block or width % block:
         raise ValueError(f"Image size {height}x{width} is not divisible by block size {block}.")
     n_blocks = (height // block) * (width // block)
@@ -97,7 +57,6 @@ def derive_block_streams(
 
 
 def _to_blocks(image: np.ndarray, block: int) -> np.ndarray:
-    """(H, W, C) -> (n_blocks, B, B, C) in raster block order."""
     h, w, c = image.shape
     blocks = image.reshape(h // block, block, w // block, block, c)
     return blocks.transpose(0, 2, 1, 3, 4).reshape(-1, block, block, c)
@@ -122,7 +81,6 @@ def _check_image(image: np.ndarray) -> Tuple[np.ndarray, bool]:
 def block_encrypt(
     image: np.ndarray, key: bytes, block: int, transient_steps: int = 1000
 ) -> np.ndarray:
-    """Scramble ``image`` (uint8, HxW or HxWxC) with the block scheme."""
     img, was_gray = _check_image(image)
     h, w, c = img.shape
     s = derive_block_streams(key, h, w, c, block, transient_steps)
@@ -140,7 +98,6 @@ def block_encrypt(
 def block_decrypt(
     encrypted: np.ndarray, key: bytes, block: int, transient_steps: int = 1000
 ) -> np.ndarray:
-    """Exact inverse of ``block_encrypt`` for the same key and block size."""
     img, was_gray = _check_image(encrypted)
     h, w, c = img.shape
     s = derive_block_streams(key, h, w, c, block, transient_steps)

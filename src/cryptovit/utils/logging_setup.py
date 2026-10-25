@@ -1,12 +1,3 @@
-"""
-cryptovit/utils/logging_setup.py
-=================================
-Centralised logging configuration for CryptoViT.
-
-Call ``setup_logging`` once at program entry; all subsequent
-``logging.getLogger(...)`` calls will inherit the configuration.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -21,19 +12,6 @@ def setup_logging(
     fmt: str = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
     datefmt: str = "%Y-%m-%d %H:%M:%S",
 ) -> None:
-    """Configure root logger with console (and optionally file) handlers.
-
-    Parameters
-    ----------
-    level:
-        Logging level string, e.g. ``"DEBUG"``, ``"INFO"``, ``"WARNING"``.
-    log_file:
-        Optional path to a ``.log`` file.  The directory is created if needed.
-    fmt:
-        Log record format string.
-    datefmt:
-        Date/time format for the log record.
-    """
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
     formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)

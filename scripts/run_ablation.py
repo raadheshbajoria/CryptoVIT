@@ -1,37 +1,4 @@
 #!/usr/bin/env python
-"""
-scripts/run_ablation.py
-=========================
-Ablation study: train and evaluate 4 model variants.
-
-Variants
---------
-A - Standard ViT + plaintext images
-B - Standard ViT + encrypted images (standard patch embedding)
-C - Standard ViT + encrypted images + CryptoPatchEmbedding
-D - CryptoViT: C + KeyAwarePositionalEncoding, trained and evaluated with the
-    key embedding derived from the encryption key
-
-Protocol
---------
-* All variants use the same seeded train/validation split of the official
-  training set (``get_split_indices``) and the same training config.
-* Checkpoints and early stopping use the validation split only. The official
-  test split is used once per variant, after training, for the final score.
-* Encrypted variants use no random crop/flip (they are meaningless on
-  ciphertext) and normalise with statistics of the encrypted training images.
-* C differs from D only by the key-aware positional offset, so D vs C
-  isolates what the key embedding adds.
-
-Each variant's result is saved as <experiments_dir>/ablation/result_<variant>.json
-and training is resumable (finished variants are skipped on a rerun).
-
-Usage
------
-    python scripts/run_ablation.py config=dermamnist
-    python scripts/run_ablation.py config=dermamnist training.epochs=30
-    python scripts/run_ablation.py config=dermamnist ablation.variants=A,D
-"""
 
 from __future__ import annotations
 
@@ -75,7 +42,6 @@ CRYPTO_EMBED_VARIANTS = ("C", "D")
 
 
 def _variant_cfg(variant: str, cfg):
-    """Return a config copy with memory-safe batching for the variant."""
     cfg = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
     if variant in CRYPTO_EMBED_VARIANTS:
         micro, accum = split_batch_for_memory(
@@ -90,7 +56,6 @@ def _variant_cfg(variant: str, cfg):
 
 
 def _build_variant(name: str, cfg, device) -> nn.Module:
-    """Build the model for a given ablation variant."""
     common = dict(
         image_size=cfg.model.image_size,
         patch_size=cfg.model.patch_size,
@@ -126,11 +91,6 @@ def _build_variant(name: str, cfg, device) -> nn.Module:
 
 
 def _get_loaders(variant: str, cfg, data_root: Path):
-    """Return (train_loader, val_loader, test_loader) for a variant.
-
-    Every variant uses the same seeded train/val split and the official test
-    split; only the image representation (plaintext vs encrypted) differs.
-    """
     if variant == "A":
         return get_dataloaders(cfg, data_root=data_root, seed=cfg.project.seed)
 
@@ -153,11 +113,6 @@ def _get_loaders(variant: str, cfg, data_root: Path):
 
 
 def run_variant(variant: str, cfg, device: torch.device, exp_dir: Path, loaders=None) -> dict:
-    """Train and evaluate one ablation variant.
-
-    ``loaders`` is an optional pre-built ``(train, val, test)`` tuple (used by
-    tests with synthetic data); by default the real CIFAR loaders are built.
-    """
     logger.info("\n%s\nVariant %s\n%s", "=" * 50, variant, "=" * 50)
     cfg = _variant_cfg(variant, cfg)
     logger.info(
@@ -218,7 +173,6 @@ def run_variant(variant: str, cfg, device: torch.device, exp_dir: Path, loaders=
 
 
 def _free_gpu_memory(device: torch.device) -> None:
-    """Release cached GPU memory and log what is still held."""
     import gc
 
     gc.collect()

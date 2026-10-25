@@ -1,9 +1,3 @@
-"""
-tests/unit/test_config.py
-==========================
-Unit tests for the configuration management system.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -42,7 +36,6 @@ class TestLoadConfig:
             load_config(overrides=["dataset.name=imagenet"])
 
     def test_project_root_injected(self, base_cfg):
-        """load_config must inject an absolute project_root path."""
         assert "project_root" in base_cfg.paths
         from pathlib import Path
 

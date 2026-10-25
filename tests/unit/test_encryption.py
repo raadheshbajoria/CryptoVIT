@@ -1,10 +1,3 @@
-"""
-tests/unit/test_encryption.py
-================================
-Unit tests for the encryption pipeline: chaotic map, key generator,
-permutation, DNA encoding, diffusion, and round-trip correctness.
-"""
-
 from __future__ import annotations
 
 import numpy as np
@@ -169,7 +162,6 @@ class TestDNA:
         assert enc.shape == (10, 10, 4)
 
     def test_xor_self_inverse(self):
-        """a XOR a should be 0 (A) for all bases."""
         from cryptovit.encryption.dna import dna_xor
 
         for b in range(4):

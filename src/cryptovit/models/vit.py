@@ -1,24 +1,3 @@
-"""
-cryptovit/models/vit.py
-=======================
-From-scratch Vision Transformer (ViT) implementation.
-
-Architecture follows Dosovitskiy et al. (2021) "An Image is Worth 16x16 Words"
-with minor adaptations for CIFAR-scale experiments:
-  * Pre-LN (LayerNorm before attention and MLP) for training stability.
-  * Learnable 1-D positional embeddings.
-  * [CLS] token classification head.
-  * Drop-path (stochastic depth) regularisation.
-
-All components are pure PyTorch - no timm dependency in this module.
-
-Usage
------
-    from cryptovit.models import build_model
-    cfg = load_config()
-    model = build_model(cfg)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -32,12 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class DropPath(nn.Module):
-    """Per-sample drop-path (stochastic depth) regularisation.
-
-    Randomly drops the entire residual branch during training.
-    At test time, the layer is the identity.
-    """
-
     def __init__(self, drop_prob: float = 0.0):
         super().__init__()
         self.drop_prob = drop_prob
@@ -56,20 +29,6 @@ class DropPath(nn.Module):
 
 
 class PatchEmbedding(nn.Module):
-    """Divide an image into non-overlapping patches and project each patch.
-
-    Parameters
-    ----------
-    image_size:
-        Spatial size of the input image (assumed square).
-    patch_size:
-        Side length of each patch (assumed square). Must divide ``image_size``.
-    in_channels:
-        Number of input channels (3 for RGB).
-    embed_dim:
-        Projection dimensionality.
-    """
-
     def __init__(
         self,
         image_size: int = 224,
@@ -94,35 +53,12 @@ class PatchEmbedding(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        x : (B, C, H, W)
-
-        Returns
-        -------
-        tokens : (B, N, embed_dim)  where N = num_patches
-        """
         x = self.projection(x)
         x = rearrange(x, "b d h w -> b (h w) d")
         return x
 
 
 class MultiHeadSelfAttention(nn.Module):
-    """Standard scaled dot-product multi-head self-attention.
-
-    Parameters
-    ----------
-    embed_dim:
-        Model dimensionality.
-    num_heads:
-        Number of attention heads.
-    attn_dropout:
-        Dropout applied to attention weights.
-    proj_dropout:
-        Dropout applied to the output projection.
-    """
-
     def __init__(
         self,
         embed_dim: int = 192,
@@ -144,15 +80,6 @@ class MultiHeadSelfAttention(nn.Module):
         self.proj_drop = nn.Dropout(proj_dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        x : (B, N, D)
-
-        Returns
-        -------
-        out : (B, N, D)
-        """
         B, N, D = x.shape
         qkv = self.qkv(x)
         qkv = rearrange(qkv, "b n (three h d) -> three b h n d", three=3, h=self.num_heads)
@@ -170,20 +97,6 @@ class MultiHeadSelfAttention(nn.Module):
 
 
 class MLP(nn.Module):
-    """Two-layer MLP with GELU activation used inside transformer blocks.
-
-    Parameters
-    ----------
-    in_features:
-        Input dimensionality.
-    hidden_features:
-        Hidden layer size (typically ``in_features * mlp_ratio``).
-    out_features:
-        Output dimensionality (defaults to ``in_features``).
-    dropout:
-        Dropout probability.
-    """
-
     def __init__(
         self,
         in_features: int,
@@ -209,27 +122,6 @@ class MLP(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    """Single transformer encoder block with pre-layer-norm.
-
-    Residual path:   x -> LN -> MHSA -> DropPath -> + x
-    Feed-forward:    x -> LN -> MLP  -> DropPath -> + x
-
-    Parameters
-    ----------
-    embed_dim:
-        Model dimensionality.
-    num_heads:
-        Number of attention heads.
-    mlp_ratio:
-        MLP hidden size as a multiple of ``embed_dim``.
-    dropout:
-        Dropout probability for MLP and attention output.
-    attn_dropout:
-        Dropout inside attention weights.
-    drop_path_rate:
-        Stochastic depth probability.
-    """
-
     def __init__(
         self,
         embed_dim: int = 192,
@@ -262,39 +154,6 @@ class TransformerBlock(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    """Vision Transformer (ViT) for image classification.
-
-    Parameters
-    ----------
-    image_size:
-        Input image spatial size (H = W).
-    patch_size:
-        Patch size (H = W). Must divide ``image_size``.
-    in_channels:
-        Number of input channels.
-    num_classes:
-        Number of output classes.
-    embed_dim:
-        Token embedding dimensionality.
-    depth:
-        Number of transformer encoder blocks.
-    num_heads:
-        Number of attention heads per block.
-    mlp_ratio:
-        MLP hidden size multiplier.
-    dropout:
-        General dropout probability.
-    attn_dropout:
-        Attention weight dropout.
-    drop_path_rate:
-        Max stochastic depth rate (linearly scaled across blocks).
-    pool:
-        Pooling strategy. ``"cls"`` uses the [CLS] token;
-        ``"mean"`` uses global average pooling over all patch tokens.
-    patch_embedding_cls:
-        Patch embedding class to use (allows swapping in CryptoPatchEmbedding).
-    """
-
     def __init__(
         self,
         image_size: int = 224,
@@ -378,15 +237,6 @@ class VisionTransformer(nn.Module):
                     nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        x : (B, C, H, W)
-
-        Returns
-        -------
-        logits : (B, num_classes)
-        """
         B = x.shape[0]
 
         x = self.patch_embed(x)
@@ -409,14 +259,9 @@ class VisionTransformer(nn.Module):
         return self.head(x)
 
     def num_parameters(self) -> int:
-        """Return total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
     def get_features(self, x: torch.Tensor) -> torch.Tensor:
-        """Return pooled features (before classification head).
-
-        Useful for ablation studies and visualisation.
-        """
         B = x.shape[0]
         x = self.patch_embed(x)
         cls_tokens = self.cls_token.expand(B, -1, -1)

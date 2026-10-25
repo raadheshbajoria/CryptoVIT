@@ -1,26 +1,4 @@
 #!/usr/bin/env python
-"""
-scripts/make_demo_pack.py
-==========================
-Pick live-demo images from real model predictions and build a picture pack.
-
-    python scripts/make_demo_pack.py --block 2 --variant D --replace-demo-images
-
-What it does
-------------
-1. Scores test images of the chosen classes with the plaintext model (A) and an
-   encrypted-image model (default D, the block-encrypted CryptoViT).
-2. Selects, per class, the test image that BOTH models classify correctly with
-   the highest confidence (the safe live-demo images), and one honest failure:
-   an image the plaintext model gets right but the encrypted-image model gets wrong.
-3. Writes the selected 28x28 originals to ``demo_images/`` (what the dashboard
-   offers in its dropdown) and, in ``presentation/``, enlarged pictures of each
-   image: original, per-pixel encrypted, block encrypted, and a side-by-side strip,
-   plus ``SELECTION.md`` with the real predictions.
-
-Everything runs on the CPU so it does not disturb training. Research prototype;
-images are from the public DermaMNIST dataset.
-"""
 
 from __future__ import annotations
 
@@ -48,14 +26,6 @@ def slug(text: str) -> str:
 def choose_images(
     records: Sequence[Dict], classes: Sequence[str], min_confidence: float = 0.0
 ) -> Dict:
-    """Pick one safe image per class and one honest failure.
-
-    ``records``: dicts with ``index``, ``label`` (class name), ``plain_pred``,
-    ``plain_conf``, ``enc_pred``, ``enc_conf``.
-    Safe = both models correct; best by the lower of the two confidences.
-    Failure = plaintext model correct, encrypted model wrong; best by the
-    encrypted model's (wrong) confidence, i.e. the most visible mistake.
-    """
     chosen: Dict[str, Dict] = {}
     for cls in classes:
         pool = [
@@ -78,17 +48,11 @@ def choose_images(
 
 
 def demo_filename(stem: str, role: str, position: int) -> str:
-    """File name for the dashboard dropdown, which lists files alphabetically.
-
-    Safe images get 1_, 2_, 3_ ... so they come first; the honest failure gets 9_
-    so it is last and nobody picks it by accident at the start of a demo.
-    """
     prefix = 9 if role == "failure" else position
     return f"{prefix}_{stem}.png"
 
 
 def enlarge(img: Image.Image, scale: int = 8) -> Image.Image:
-    """Nearest-neighbour enlargement so tiny images stay crisp on a projector."""
     return img.resize((img.width * scale, img.height * scale), Image.NEAREST)
 
 
@@ -100,7 +64,6 @@ def triptych(
     title_h: int = 28,
     caption_h: int = 30,
 ) -> Image.Image:
-    """Side-by-side strip of equally sized panels with a title above each."""
     if len(panels) != len(titles):
         raise ValueError("panels and titles must have the same length")
     w, h = panels[0].size
@@ -126,7 +89,6 @@ def score_images(
     key: str,
     variant: str,
 ) -> List[Dict]:
-    """Predict with A (plaintext) and an encrypted-image model for test images."""
     records = []
     for cls in classes:
         class_id = list(class_names).index(cls)
@@ -158,7 +120,6 @@ def write_pack(
     demo_dir: Optional[Path],
     position: int = 1,
 ) -> Dict:
-    """Write the originals and the enlarged pictures for one selected image."""
     from cryptovit.encryption import encrypt
 
     arr = np.array(test_ds[rec["index"]][0])

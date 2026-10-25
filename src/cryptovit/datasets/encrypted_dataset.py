@@ -1,40 +1,3 @@
-"""
-cryptovit/datasets/encrypted_dataset.py
-=========================================
-Encrypted CIFAR dataset for CryptoViT Phases 7-11.
-
-Two modes of operation
----------------------
-1. **On-the-fly encryption** (``mode="online"``)
-   The dataset encrypts images at load time.  Useful for development and
-   debugging.  Slow for full training due to Python-level encryption loop.
-
-2. **Pre-generated encrypted dataset** (``mode="precomputed"``)
-   Encrypted images are generated once and saved to disk as NumPy arrays.
-   Subsequent runs load from disk.  Recommended for actual training runs.
-
-Usage
------
-    from cryptovit.datasets.encrypted_dataset import EncryptedCIFARDataset
-
-    # On-the-fly (no disk I/O)
-    ds = EncryptedCIFARDataset(
-        base_dataset=base_cifar10_dataset,
-        key="my_secret_key",
-        mode="online",
-        transform=eval_transform,
-    )
-
-    # Pre-generated (fast)
-    ds = EncryptedCIFARDataset(
-        base_dataset=base_cifar10_dataset,
-        key="my_secret_key",
-        mode="precomputed",
-        encrypted_dir=Path("data/encrypted/cifar10_key1"),
-        transform=eval_transform,
-    )
-"""
-
 from __future__ import annotations
 
 import logging
@@ -56,27 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class EncryptedCIFARDataset(Dataset):
-    """Wraps a CIFAR torchvision dataset and serves encrypted images.
-
-    Parameters
-    ----------
-    base_dataset : Dataset
-        An un-transformed (or minimally-transformed) CIFAR dataset.
-        Images should be returned as PIL Images or uint8 tensors/arrays.
-    key : str
-        Encryption key.
-    mode : {"online", "precomputed"}
-        Encryption strategy.
-    encrypted_dir : Path, optional
-        Path to the directory containing pre-generated encrypted images.
-        Required when ``mode="precomputed"``.
-    transform : callable, optional
-        torchvision transform applied *after* the encrypted uint8 image
-        is retrieved.  Should at minimum convert to tensor and normalise.
-    transient_steps : int
-        Warm-up steps for the chaotic system.
-    """
-
     def __init__(
         self,
         base_dataset: Dataset,
@@ -125,7 +67,6 @@ class EncryptedCIFARDataset(Dataset):
         return enc_tensor, label
 
     def _load_precomputed(self):
-        """Load pre-generated encrypted images from disk."""
         images_path = self.encrypted_dir / "images.npy"
         labels_path = self.encrypted_dir / "labels.npy"
         if not images_path.exists():
@@ -150,21 +91,6 @@ def generate_encrypted_dataset(
     transient_steps: int = 1000,
     scheme: str = "v1",
 ) -> None:
-    """Generate and save an encrypted version of a dataset.
-
-    Encrypts each image in ``base_dataset`` and saves all encrypted images
-    as a single ``.npy`` array.
-
-    Parameters
-    ----------
-    base_dataset : Dataset
-        CIFAR dataset (returns PIL images, not tensors).
-    key : str
-        Encryption key.
-    save_dir : Path
-        Directory to write ``images.npy`` and ``labels.npy``.
-    transient_steps : int
-    """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -198,11 +124,6 @@ def compute_encrypted_stats(
     transient_steps: int = 1000,
     scheme: str = "v1",
 ) -> Dict[str, List[float]]:
-    """Per-channel mean/std (0-1 scale) of encrypted images.
-
-    Encrypted images are close to uniform noise, so the plaintext CIFAR
-    statistics do not apply. Statistics must come from training images only.
-    """
     chosen = list(indices)[:n_samples]
     if not chosen:
         raise ValueError("indices must contain at least one sample.")
@@ -224,11 +145,6 @@ def compute_encrypted_stats(
 def build_encrypted_transform(
     image_size: int, mean: Sequence[float], std: Sequence[float]
 ) -> transforms.Compose:
-    """Deterministic transform for encrypted images.
-
-    No random crop or flip: those operations on ciphertext do not correspond
-    to any plaintext augmentation and only inject noise.
-    """
     return transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
@@ -246,21 +162,6 @@ def build_encrypted_loaders(
     seed: int,
     base_val: Optional[Dataset] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """Train/val/test loaders over encrypted images.
-
-    * Without ``base_val``, train and validation use the same index split as
-      the plaintext ``get_dataloaders`` (``get_split_indices`` with the same
-      seed), so plaintext and encrypted experiments see exactly the same
-      images. With ``base_val`` (datasets that ship official splits, such as
-      MedMNIST) ``base_train`` is used whole and ``base_val`` is the
-      validation set.
-    * The test set is only the official test split; it is never used for
-      checkpoint selection or early stopping.
-    * Normalisation statistics are measured on training images only.
-
-    ``base_train`` / ``base_test`` return un-transformed PIL images (or uint8
-    arrays) and labels.
-    """
     if base_val is None:
         train_idx, val_idx = get_split_indices(len(base_train), cfg.dataset.train_split, seed)
     else:
@@ -315,7 +216,6 @@ def build_encrypted_loaders(
 
 
 def _pil_to_uint8(img) -> np.ndarray:
-    """Convert PIL Image or tensor to HWC uint8 numpy array."""
     if hasattr(img, "numpy"):
         arr = img.numpy()
         if arr.ndim == 3 and arr.shape[0] in (1, 3):

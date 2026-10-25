@@ -1,42 +1,3 @@
-"""
-cryptovit/models/positional_encoding.py
-=========================================
-Positional encoding variants for CryptoViT.
-
-Background
-----------
-Standard ViT uses learnable 1-D positional embeddings added to token
-embeddings before the transformer encoder.  The positional embedding
-encodes the spatial position of each patch.
-
-For encrypted images the spatial positions have been permuted by the
-encryption.  The ``KeyAwarePositionalEncoding`` incorporates information
-derived from the encryption key to modulate the positional signal -
-making the transformer implicitly "key-aware" even without explicit
-key injection into every layer.
-
-Variants
---------
-* ``LearnedPositionalEncoding``   - standard ViT 1-D learnable PE.
-* ``SinusoidalPositionalEncoding`` - fixed sinusoidal PE (used as baseline).
-* ``KeyAwarePositionalEncoding``   - learnable PE + key-derived additive offset.
-
-All variants include the [CLS] token position (index 0).
-
-Design note on KeyAwarePositionalEncoding
------------------------------------------
-The key-derived offset is computed as:
-    offset = MLP(key_embedding)   shape: (1, num_patches + 1, embed_dim)
-
-where ``key_embedding`` is a fixed (per-call) vector derived from the
-SHA-256 hash of the key.  The MLP is small (256 -> embed_dim) and its
-output is added as a residual to the standard learnable PE.
-
-This allows the positional information to shift based on the key, which
-can help the model learn that different encrypted representations of the
-same image (under different keys) have different positional statistics.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -51,18 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 class LearnedPositionalEncoding(nn.Module):
-    """Standard ViT learnable 1-D positional embeddings.
-
-    Parameters
-    ----------
-    num_patches : int
-        Number of image patch tokens (not counting [CLS]).
-    embed_dim : int
-        Token embedding dimensionality.
-    dropout : float
-        Dropout applied after adding positional embeddings.
-    """
-
     def __init__(self, num_patches: int, embed_dim: int, dropout: float = 0.0):
         super().__init__()
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
@@ -70,25 +19,10 @@ class LearnedPositionalEncoding(nn.Module):
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Add positional embeddings to token sequence.
-
-        Parameters
-        ----------
-        x : (B, N+1, D) - token sequence with [CLS] prepended
-
-        Returns
-        -------
-        (B, N+1, D)
-        """
         return self.drop(x + self.pos_embed)
 
 
 class SinusoidalPositionalEncoding(nn.Module):
-    """Fixed sinusoidal positional encoding (no learned parameters).
-
-    Follows the formulation from Vaswani et al. (2017).
-    """
-
     def __init__(self, num_patches: int, embed_dim: int, dropout: float = 0.0):
         super().__init__()
         self.drop = nn.Dropout(dropout)
@@ -108,21 +42,6 @@ class SinusoidalPositionalEncoding(nn.Module):
 
 
 class KeyAwarePositionalEncoding(nn.Module):
-    """Learnable PE with a key-derived additive offset.
-
-    The key offset is computed on-the-fly from a key embedding vector.
-    The key can be provided as a string, bytes, or a pre-computed
-    float tensor (the key embedding).
-
-    Parameters
-    ----------
-    num_patches : int
-    embed_dim : int
-    dropout : float
-    key_embed_dim : int
-        Dimensionality of the key embedding fed into the MLP.
-    """
-
     def __init__(
         self,
         num_patches: int,
@@ -156,18 +75,6 @@ class KeyAwarePositionalEncoding(nn.Module):
         x: torch.Tensor,
         key_embedding: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Add key-aware positional embeddings.
-
-        Parameters
-        ----------
-        x : (B, N+1, D) - token sequence with [CLS] prepended
-        key_embedding : (B, key_embed_dim) or (1, key_embed_dim) float tensor.
-            If None, falls back to standard learnable PE (no key offset).
-
-        Returns
-        -------
-        (B, N+1, D)
-        """
         if key_embedding is None:
             return self.drop(x + self.pos_embed)
 
@@ -185,19 +92,6 @@ class KeyAwarePositionalEncoding(nn.Module):
 
     @staticmethod
     def key_to_embedding(key: str | bytes, embed_dim: int = 256) -> torch.Tensor:
-        """Convert a key string/bytes to a fixed float embedding vector.
-
-        Uses SHA-256 to produce a deterministic 256-dim float32 vector.
-
-        Parameters
-        ----------
-        key : str or bytes
-        embed_dim : int - must be a multiple of 8
-
-        Returns
-        -------
-        (1, embed_dim) float32 tensor (values in [-1, 1])
-        """
         if isinstance(key, str):
             key = key.encode("utf-8")
         digest = hashlib.sha256(key).digest()

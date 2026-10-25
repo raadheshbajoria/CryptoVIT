@@ -1,11 +1,3 @@
-"""
-tests/unit/test_vit.py
-=======================
-Unit tests for the Vision Transformer model.
-
-All tests run on CPU and use tiny configurations to stay fast.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -91,7 +83,6 @@ class TestTransformerBlock:
         assert out.shape == x.shape
 
     def test_residual_connection(self):
-        """With zero weights the block should approximate identity."""
         from cryptovit.models.vit import TransformerBlock
 
         block = TransformerBlock(embed_dim=48, num_heads=3, drop_path_rate=0.0)

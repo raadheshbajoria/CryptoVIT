@@ -1,5 +1,3 @@
-"""Dashboard tests against a faked API (no server needed)."""
-
 from __future__ import annotations
 
 import json

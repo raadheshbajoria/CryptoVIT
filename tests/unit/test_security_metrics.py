@@ -1,9 +1,3 @@
-"""
-tests/unit/test_security_metrics.py
-===================================
-Unit tests for image encryption security metrics.
-"""
-
 from __future__ import annotations
 
 import numpy as np

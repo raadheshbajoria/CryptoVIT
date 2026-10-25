@@ -1,21 +1,3 @@
-"""
-cryptovit/evaluation/metrics.py
-================================
-ML evaluation metrics for CryptoViT experiments.
-
-Provides a single ``evaluate_model`` function that returns a comprehensive
-metrics dictionary suitable for logging, CSV export, and comparison tables.
-
-Metrics computed
-----------------
-* Accuracy (top-1)
-* Precision, Recall, F1 (macro-averaged)
-* Per-class precision, recall, F1
-* Confusion matrix (as nested list)
-* Inference throughput (images/sec)
-* Peak GPU memory (if CUDA)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -49,35 +31,6 @@ def evaluate_model(
     num_classes: Optional[int] = None,
     key_embedding: Optional[torch.Tensor] = None,
 ) -> Dict:
-    """Run inference on ``loader`` and compute comprehensive metrics.
-
-    Parameters
-    ----------
-    model:
-        Trained model in eval mode (this function sets eval mode internally).
-    loader:
-        DataLoader over the evaluation split.
-    device:
-        Torch device.
-    use_amp:
-        Whether to use automatic mixed precision during inference.
-    class_names:
-        Optional list of class name strings (for labelled confusion matrix).
-    num_classes:
-        Number of output classes. When given, per-class metrics and the
-        confusion matrix always have this many entries, even if a class is
-        missing from the labels or predictions. Inferred from data if None.
-    key_embedding:
-        Optional ``(1, key_embed_dim)`` tensor passed to the model as
-        ``key_embedding=`` (for models with a key-aware positional encoding).
-
-    Returns
-    -------
-    dict with keys:
-        accuracy, precision, recall, f1,
-        per_class_precision, per_class_recall, per_class_f1,
-        confusion_matrix, throughput_img_per_sec, peak_gpu_memory_mb
-    """
     model.eval()
     model.to(device)
     if key_embedding is not None:
@@ -175,12 +128,6 @@ def evaluate_model(
 
 
 def _auc_scores(y_true: np.ndarray, probs: np.ndarray, num_classes: Optional[int]) -> tuple:
-    """Macro one-vs-rest AUC and per-class AUC.
-
-    A class that never occurs (or always occurs) in ``y_true`` has no defined
-    AUC; its entry is ``None`` and it is skipped in the macro average. Returns
-    ``(None, [])`` if probabilities are unavailable or only one class is present.
-    """
     if probs.ndim != 2 or probs.shape[0] != len(y_true) or probs.shape[0] == 0:
         return None, []
     n_cls = num_classes or probs.shape[1]
@@ -212,7 +159,6 @@ def _log_summary(results: Dict) -> None:
 
 
 def print_metrics_table(results: Dict) -> None:
-    """Pretty-print a classification report to stdout."""
     print(f"\n{'=' * 60}")
     print(
         f"  Overall  | Acc={results['accuracy']:.4f}  "

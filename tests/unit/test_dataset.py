@@ -1,13 +1,3 @@
-"""
-tests/unit/test_dataset.py
-===========================
-Unit tests for the CIFAR dataset module.
-
-These tests do NOT download data from the internet.
-They use synthetic/in-memory datasets to verify transform logic,
-split sizes, and DataLoader construction without network calls.
-"""
-
 from __future__ import annotations
 
 import numpy as np
@@ -18,7 +8,6 @@ from torch.utils.data import DataLoader, TensorDataset
 
 
 def _make_minimal_cfg(name: str = "cifar10", image_size: int = 32) -> OmegaConf:
-    """Construct a minimal config for testing without loading files."""
     num_classes = {"cifar10": 10, "cifar100": 100}[name]
     cfg = OmegaConf.create(
         {
@@ -78,7 +67,6 @@ class TestBuildTransforms:
         assert torch.allclose(t1, t2), "Eval transform is not deterministic"
 
     def test_train_transform_normalises(self):
-        """After normalisation, mean should be close to 0."""
         from PIL import Image
 
         from cryptovit.datasets import build_train_transform
@@ -131,7 +119,6 @@ class TestGetClassNames:
 
 class TestComputeDatasetStats:
     def test_known_stats(self):
-        """For a tensor dataset of all 0.5, stats should be mean=0.5, std~0."""
         from cryptovit.datasets import compute_dataset_stats
 
         images = torch.full((100, 3, 32, 32), 0.5)
