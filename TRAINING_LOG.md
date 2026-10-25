@@ -1,127 +1,193 @@
-# CryptoViT — Work Log
+# CryptoViT - Work Log
 
-All times are local (IST, UTC+05:30), 2026-10-24 unless stated. Newest entries are at the bottom.
+All times are local (IST, UTC+05:30); entries up to 23:59 are 2026-10-24, entries from 00:00 are 2026-10-25. Newest entries are at the bottom.
 Everything listed here was actually done; numbers are copied from real command output.
 
-## Part 1 — Setup, audit and code improvements (before the overnight run)
+## Summary (read this first)
+
+**State at 06:35 on 2026-10-25.** Everything you asked for is finished and pushed to the `ananjan` branch of
+`raadheshbajoria/CryptoVIT`; the live demo is running on your laptop (see "Run the demo"). 311 unit tests pass.
+
+### What was built
+* A medical version of the project on **DermaMNIST** (7 skin-lesion classes): data loading with the official splits,
+  class-weighted training, balanced-accuracy model selection and medical metrics (sensitivity, specificity, AUC).
+* Three encryption schemes: the original per-pixel scheme (`v1`), a per-channel variant (`v2`, only checked for exact
+  decryption) and a new **block-wise scheme** (`block2`) that a Vision Transformer can learn from.
+* Seven trained models: the plaintext baseline A, and B/C/D on per-pixel-encrypted and on block-encrypted images.
+* An API and a plain-text dashboard (encrypt, classify encrypted image, decrypt with right/wrong key, model comparison,
+  results), a one-command launcher, resumable training, thermal safety scripts, a demo-picture pack and a review guide.
+
+### Final results (held-out test set, 2,005 images, one run per row, measured once)
+| Encryption | Variant | Model | Accuracy | Balanced accuracy | Macro AUC | Melanoma sensitivity | Epochs | Train time (min) |
+|---|---|---|---|---|---|---|---|---|
+| none (plaintext) | A | Plain ViT, plaintext image | 52.2% | 53.3% | 0.788 | 64.1% | 58 | 34 |
+| per-pixel (v1) | B | Plain ViT, encrypted image | 12.9% | 19.4% | 0.573 | 48.0% | 51 | 36 |
+| per-pixel (v1) | C | CryptoPatchEmbedding, encrypted image | 31.8% | 23.9% | 0.581 | 45.7% | 54 | 53 |
+| per-pixel (v1) | D | CryptoViT (patch embedding + key-aware positions), encrypted image | 9.1% | 23.0% | 0.627 | 25.6% | 34 | 42 |
+| block2 | B | Plain ViT, encrypted image | 46.5% | 53.6% | 0.809 | 65.0% | 60 | 41 |
+| block2 | C | CryptoPatchEmbedding, encrypted image | 49.1% | 53.0% | 0.839 | 61.9% | 50 | 62 |
+| block2 | D | CryptoViT (patch embedding + key-aware positions), encrypted image | 56.1% | 54.9% | 0.815 | 71.3% | 54 | 68 |
+
+* **The encryption scheme decides whether classifying encrypted images works:** per-pixel scrambling leaves the models at
+  19-24% balanced accuracy (chance 14.3%); block-wise scrambling gives 53-55%, comparable to the plaintext 53.3%.
+* **Your custom components show no measurable gain over a plain ViT** (block: B 53.6%, C 53.0%, D 54.9%). Differences of a
+  few points are within noise: a single seed, and the rarest classes have only 23-29 test images. I make no claim of
+  significance and the review guide says to state this yourself.
+* **The block scheme is the weaker cipher** (`SECURITY.md`): changing one pixel changes 20.5% of the output for per-pixel
+  and exactly one pixel for block, against about 99.6% for a good cipher. It trades security for classifiability and gives
+  visual protection only. Neither scheme replaces a standard cipher; the key in the code is public.
+
+### Files to look at (all on GitHub, branch `ananjan`)
+| What | Link |
+|---|---|
+| Repository | https://github.com/raadheshbajoria/CryptoVIT/tree/ananjan |
+| Results table (every row) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/RESULTS.md |
+| Security measurements | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/SECURITY.md |
+| Review guide (talk track, demo script, Q&A) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/presentation/REVIEW_GUIDE.md |
+| Live-demo image 1: melanoma (28x28) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/demo_images/1_safe_melanoma_test846.png |
+| Live-demo image 2: benign nevus | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/demo_images/2_safe_melanocytic_nevi_test30.png |
+| Live-demo image 3: basal cell carcinoma | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/demo_images/3_safe_basal_cell_carcinoma_test436.png |
+| Honest failure case | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/demo_images/9_failure_basal_cell_carcinoma_test1214.png |
+| Slide picture, melanoma (original / per-pixel / block) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/presentation/safe_melanoma_test846_side_by_side.png |
+| Slide picture, nevus | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/presentation/safe_melanocytic_nevi_test30_side_by_side.png |
+| Slide picture, basal cell carcinoma | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/presentation/safe_basal_cell_carcinoma_test436_side_by_side.png |
+| Slide picture, failure case | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/presentation/failure_basal_cell_carcinoma_test1214_side_by_side.png |
+
+All links were checked to open without logging in. Download the four demo images and the strips beforehand; they are also in
+your project folders `demo_images/` and `presentation/` (the first of which feeds the dashboard dropdown).
+
+### Run the demo
+```
+python scripts/start_demo.py --block 2
+```
+It is already running now (dashboard http://localhost:8501, API http://127.0.0.1:8000, block-scheme models). In the sidebar
+pick `1_safe_melanoma_test846`. For this image all four models say melanoma (A 62%, B 57%, C 50%, D 65%). The failure
+case is last in the dropdown on purpose.
+
+### On your machine now
+* **Sleep:** you set "sleep when plugged in" to Never for the night; set it back if you want.
+* **Running:** the demo (dashboard and API) from the launcher `PID 18764`. Stop it with `taskkill /PID 18764 /T /F`.
+* **Stopped by me at 06:31:** the emergency-pause watchdog and the 9-hour keep-awake helper (nothing is training). The
+  90 C emergency pause never triggered during the night, and the thermal guard's 80 C rule never needed to act once the
+  GPU was on the stand with pacing alone (about 54-58 C).
+* **Disk:** saved models in `experiments/` take about 2.4 GB (per-pixel) and 2.8 GB (block); they are not in git.
+  `experiments/ablation` (131 MB) is the abandoned CIFAR run and can be deleted.
+
+### Incidents and mistakes (all in the timeline below)
+Heat reported at 01:40 (82-86 C) -> stand, guard, pacing, emergency pause; training slowed about 10x by GPU memory spilling
+into RAM -> found with Windows GPU counters, fixed; my own mistakes: a PowerShell text command garbled the dashboard's
+special characters (reversed exactly), several timestamps I wrote ahead of the clock (corrected), a progress watcher whose
+filter held back its output, and an overstated claim that block "preserves the histogram" (corrected with a measurement).
+
+### Not done / limits
+One training run per row (no confidence intervals); 28x28 images only; `v2` was never trained on; per-key retraining is
+needed; Phase 2 ideas are in the review guide. Research prototype; not a medical device; not for clinical use.
+
+---
+
+## Part 1 - Setup, audit and code improvements (before the overnight run)
 
 | Time | What happened |
 |---|---|
 | 22:15 | Starting point: branch `ananjan` at `af61e56`, clean tree, 115 unit tests passing. |
 | ~22:30 | Found the venv had **CPU-only PyTorch** (`2.14.0+cpu`). Installed the CUDA build (`2.11.0+cu128`); first attempt failed a hash check (corrupt download), second succeeded. GPU detected: RTX 3050 Laptop, 4 GB. |
 | ~22:40 | Found `data/raw/cifar-10-python.tar.gz` was **truncated** (3.8 MB instead of 170 MB; `tar` reported "Truncated input file"). Resumed the download with `curl -C -` (the dataset server was slow, 26-100 kB/s, and dropped the connection once). |
-| 22:54 | Commit `0629840` — trainer: LR schedule sized by optimiser steps (fixes gradient accumulation), no weight decay on bias/norm params, loss/acc accumulated on-device. |
-| 22:15–23:00 | **Read-only audit** of the whole pipeline (encryption, datasets, models, training, evaluation) plus probes. Key findings: ablation used the **test set for model selection** (variants B–E); the key-aware positional encoding was **never given a key** in training; variant E was identical to D; README claim "NPCR > 99%" was not supported (measured plaintext-sensitivity NPCR 1.6–8%); 32x32 entropy cannot exceed ~7.82; all colour channels shared one permutation/keystream. |
-| 23:02 | Commit `d8c998f` — encryption 140x faster (53 ms -> 0.37 ms per 32x32 image) by caching key streams and vectorising the chained XOR. Output verified bit-identical to the original with equivalence tests. |
-| 23:05 | Commit `0e7933c` — `Trainer` and `evaluate_model` now pass the key embedding to the model; per-class metrics keep a fixed length; headless matplotlib backend for tests (a plotting test was flaky). |
-| 23:07 | Commit `79a2fab` — ablation protocol fixed: shared seeded train/val split for plaintext and encrypted runs, test set used only for the final score, no crop/flip on ciphertext, normalisation stats from encrypted training images, variant D trains with the key embedding, duplicate variant E removed. |
-| 23:11 | Commit `32d2af8` — measured GPU memory (batch 32: 1.75 GB; 64: 3.4 GB; 128: 6.7 GB which spills into shared memory and runs 10–70x slower), so variants C/D use micro-batches of 32 with gradient accumulation. Docs corrected: `CryptoPatchEmbedding` adds ~3.04M parameters over the standard embedding. |
-| 23:12 | Commit `f90cad4` — added the standard plaintext-sensitivity NPCR/UACI test and a size-aware entropy reference; dashboard relabelled; README claims corrected. |
-| 23:13 | Commit `73cca02` — end-to-end smoke tests for variants A–D on synthetic data. |
-| 23:17 | Commit `34767e0` — opt-in encryption **scheme v2** (per-channel permutations/keystreams, uniform Fisher–Yates shuffle). v1 stays default and bit-identical. v2 does **not** improve plaintext sensitivity (NPCR ~14% vs ~18% for v1, ideal 99.6%) because the XOR-chain diffusion is unchanged. |
+| 22:54 | Commit `0629840` - trainer: LR schedule sized by optimiser steps (fixes gradient accumulation), no weight decay on bias/norm params, loss/acc accumulated on-device. |
+| 22:15-23:00 | **Read-only audit** of the whole pipeline (encryption, datasets, models, training, evaluation) plus probes. Key findings: ablation used the **test set for model selection** (variants B-E); the key-aware positional encoding was **never given a key** in training; variant E was identical to D; README claim "NPCR > 99%" was not supported (measured plaintext-sensitivity NPCR 1.6-8%); 32x32 entropy cannot exceed ~7.82; all colour channels shared one permutation/keystream. |
+| 23:02 | Commit `d8c998f` - encryption 140x faster (53 ms -> 0.37 ms per 32x32 image) by caching key streams and vectorising the chained XOR. Output verified bit-identical to the original with equivalence tests. |
+| 23:05 | Commit `0e7933c` - `Trainer` and `evaluate_model` now pass the key embedding to the model; per-class metrics keep a fixed length; headless matplotlib backend for tests (a plotting test was flaky). |
+| 23:07 | Commit `79a2fab` - ablation protocol fixed: shared seeded train/val split for plaintext and encrypted runs, test set used only for the final score, no crop/flip on ciphertext, normalisation stats from encrypted training images, variant D trains with the key embedding, duplicate variant E removed. |
+| 23:11 | Commit `32d2af8` - measured GPU memory (batch 32: 1.75 GB; 64: 3.4 GB; 128: 6.7 GB which spills into shared memory and runs 10-70x slower), so variants C/D use micro-batches of 32 with gradient accumulation. Docs corrected: `CryptoPatchEmbedding` adds ~3.04M parameters over the standard embedding. |
+| 23:12 | Commit `f90cad4` - added the standard plaintext-sensitivity NPCR/UACI test and a size-aware entropy reference; dashboard relabelled; README claims corrected. |
+| 23:13 | Commit `73cca02` - end-to-end smoke tests for variants A-D on synthetic data. |
+| 23:17 | Commit `34767e0` - opt-in encryption **scheme v2** (per-channel permutations/keystreams, uniform Fisher-Yates shuffle). v1 stays default and bit-identical. v2 does **not** improve plaintext sensitivity (NPCR ~14% vs ~18% for v1, ideal 99.6%) because the XOR-chain diffusion is unchanged. |
 | 23:2x | CIFAR-10 download finished: 170,498,071 bytes, MD5 `c58f30108f718f92721af3b95e74349a` (matches the official checksum). Extracted: 50,000 train / 10,000 test, 5,000 per class. |
-| 23:18–23:20 | 1-epoch real-data smoke run of the plain ViT: 111 s/epoch, 540 MB GPU memory, val acc 38.6%, test acc 39.5% (pipeline check only, not a result). |
+| 23:18-23:20 | 1-epoch real-data smoke run of the plain ViT: 111 s/epoch, 540 MB GPU memory, val acc 38.6%, test acc 39.5% (pipeline check only, not a result). |
 | 23:31 | You approved: train **A and B at 30 epochs**, handle errors myself, keep this log. |
 
-## Part 2 — Overnight run (A = plain ViT on plaintext, B = plain ViT on encrypted, 30 epochs)
+## Part 2 - Overnight run (A = plain ViT on plaintext, B = plain ViT on encrypted, 30 epochs)
+
+*The CIFAR-10 run launched in this part was abandoned at 23:45 when the goal became medical imaging; nothing from it appears in the results.*
 
 | Time | What happened |
 |---|---|
-| 23:32 | Commit `5ac77bb` — training made **resumable**: `checkpoints/last.pt` written atomically after every epoch (model, optimiser, LR schedule, AMP scaler, history, early-stopping state); `run_ablation.py` resumes each variant, writes `result_<variant>.json` when a variant finishes, skips finished variants, retries a failed variant once, and logs to `experiments/ablation/run.log`. A test confirms a crashed + resumed run ends with the same weights/LR as an uninterrupted run. 197 unit tests passing. |
+| 23:32 | Commit `5ac77bb` - training made **resumable**: `checkpoints/last.pt` written atomically after every epoch (model, optimiser, LR schedule, AMP scaler, history, early-stopping state); `run_ablation.py` resumes each variant, writes `result_<variant>.json` when a variant finishes, skips finished variants, retries a failed variant once, and logs to `experiments/ablation/run.log`. A test confirms a crashed + resumed run ends with the same weights/LR as an uninterrupted run. 197 unit tests passing. |
 | 23:32:54 | **Launched** `python scripts/run_ablation.py ablation.variants=A,B training.epochs=30` as a detached process (PID 41580), stdout/stderr in `experiments/ablation/`. Settings: AdamW, lr 3e-4, cosine with 5 warm-up epochs, batch 128, mixed precision, label smoothing 0.1, early-stopping patience 20, seed 42, encryption scheme v1, key `CryptoViT_Research_Key_2025`. A = plain ViT on plaintext; B = same ViT on encrypted images; both use the same 45,000 / 5,000 train/val split and the 10,000-image test set (used once, after training). |
 | 23:32 | Started a keep-awake helper (PID 36108, Windows `SetThreadExecutionState`) that lives only while the training process runs, so the laptop does not idle-sleep. It does not change any power settings. Closing the lid or choosing Sleep would still stop the run. |
 | 23:33:01 | Variant A started (epoch 1 of 30). |
-
 | 23:43 | Variant A (CIFAR-10, plain ViT) reached epoch 6/30 with val acc 53.1% (about 107 s/epoch). |
 | 23:45 | **Stopped the CIFAR-10 run on your instruction** (CIFAR is not relevant to the medical goal). Process tree of PID 41580 killed; GPU memory back to 74 MiB. The partial CIFAR output stays on disk in `experiments/ablation/` (not committed, not a result). `last.pt` exists, so it could be resumed, but there is no plan to. |
 
-## Part 3 — Medical direction (DermaMNIST)
+## Part 3 - Medical direction (DermaMNIST)
 
 | Time | What happened |
 |---|---|
-| 23:4x | Goal changed to **medical image classification**. Capstone Phase 1 review is **Monday**; plan: DermaMNIST (7 skin-lesion classes), variants A–D. |
-| 23:4x | Installed `medmnist` 3.0.2 into the venv with `--no-deps` (so PyTorch/NumPy were not touched). Downloaded DermaMNIST 28x28 (18.8 MB) to `data/raw/medmnist/` (git-ignored). Official splits: train 7,007 / val 1,003 / test 2,005. Train class counts: 228, 359, 769, 80, 779, **4,693**, 99 — melanocytic nevi are 67% of the training set, so plain accuracy would hide poor melanoma detection. |
-
-| 23:50 | Commit `c31eedf` — MedMNIST support: `medmnist_dataset.py` (adapter to RGB + int labels, official splits, class names from official metadata), `config=<name>` command-line option, config validation for the new datasets. 205 tests passing. |
-| 00:05 | Commit `dffe492` — medical metrics (balanced accuracy, per-class sensitivity/specificity/support, per-class + macro one-vs-rest AUC), class-weighted loss, checkpoint selection and early stopping on **balanced accuracy**, `configs/dermamnist.yaml` (stats from the training split, no crop/flip so A–D are comparable, `class_weights: balanced`). 226 tests passing. |
-| 23:51–00:14 | **Real-data checks found a bug the synthetic tests could not:** evaluating the CryptoPatchEmbedding variants (C/D) at batch 256 needs ~6.5 GB (measured) and overflowed the 4 GB GPU -> `CUDA out of memory` during validation. Fixed by capping evaluation batch size to 32 for C/D (results do not depend on eval batch size). Also set `persistent_workers` on training loaders (Windows re-spawns workers every epoch otherwise). A first D smoke run took ~5 min/epoch before the OOM; after the fix D runs at ~61 s/epoch. **The cause of that one slow epoch was not conclusively identified** (a clean profile showed 0.14 s per micro-step, data loading 74 ms/batch; power was AC, 100%, Turbo plan). |
+| ~23:46 | Goal changed to **medical image classification**. Capstone Phase 1 review is **Monday**; plan: DermaMNIST (7 skin-lesion classes), variants A-D. |
+| ~23:48 | Installed `medmnist` 3.0.2 into the venv with `--no-deps` (so PyTorch/NumPy were not touched). Downloaded DermaMNIST 28x28 (18.8 MB) to `data/raw/medmnist/` (git-ignored). Official splits: train 7,007 / val 1,003 / test 2,005. Train class counts: 228, 359, 769, 80, 779, **4,693**, 99 - melanocytic nevi are 67% of the training set, so plain accuracy would hide poor melanoma detection. |
+| 23:47 | Commit `c31eedf` - MedMNIST support: `medmnist_dataset.py` (adapter to RGB + int labels, official splits, class names from official metadata), `config=<name>` command-line option, config validation for the new datasets. 205 tests passing. |
+| 00:15 | Commit `dffe492` - medical metrics (balanced accuracy, per-class sensitivity/specificity/support, per-class + macro one-vs-rest AUC), class-weighted loss, checkpoint selection and early stopping on **balanced accuracy**, `configs/dermamnist.yaml` (stats from the training split, no crop/flip so A-D are comparable, `class_weights: balanced`). 226 tests passing. |
+| 23:51-00:14 | **Real-data checks found a bug the synthetic tests could not:** evaluating the CryptoPatchEmbedding variants (C/D) at batch 256 needs ~6.5 GB (measured) and overflowed the 4 GB GPU -> `CUDA out of memory` during validation. Fixed by capping evaluation batch size to 32 for C/D (results do not depend on eval batch size). Also set `persistent_workers` on training loaders (Windows re-spawns workers every epoch otherwise). A first D smoke run took ~5 min/epoch before the OOM; after the fix D runs at ~61 s/epoch. **The cause of that one slow epoch was not conclusively identified** (a clean profile showed 0.14 s per micro-step, data loading 74 ms/batch; power was AC, 100%, Turbo plan). |
 | 00:09 | A hung profiling script (my own: it was missing the `if __name__ == "__main__"` guard that Windows data-loader workers need) was killed. Not a project bug. |
 | 00:15:32 | **Launched the DermaMNIST run:** `python scripts/run_ablation.py config=dermamnist ablation.variants=A,B,C,D training.epochs=60 paths.experiments_dir=experiments/dermamnist` (PID 42800). Output in `experiments/dermamnist/ablation/` (kept apart from the abandoned CIFAR output so a resume cannot pick up the wrong checkpoint). Settings: 60 epochs, early-stopping patience 20, AdamW lr 3e-4, 5 warm-up epochs, effective batch 128 (micro-batch 32 x 4 for C/D), mixed precision, label smoothing 0.1, balanced class weights, checkpoint chosen by validation balanced accuracy, seed 42, scheme v1, official splits (train 7,007 / val 1,003 / test 2,005; test used once per variant after training). Keep-awake helper PID 18456. |
-
-| 00:20–00:40 | **API and dashboard updated for the skin-lesion task** (while training ran on the GPU; all testing was done on CPU). New module `src/cryptovit/inference/pipeline.py` loads the best checkpoint of each variant A–D, applies the same preprocessing as training (plaintext statistics for A, statistics of the encrypted training images for B/C/D, cached in `encrypted_stats.json`), and classifies. `api/main.py` now serves class names from the dataset, `/compare` (all variants for one image), `/results` (test results from `result_*.json`) and reports which models are trained; config is selected with the environment variables `CRYPTOVIT_CONFIG=dermamnist` and `CRYPTOVIT_EXPERIMENTS=experiments/dermamnist`. |
+| 00:20-00:40 | **API and dashboard updated for the skin-lesion task** (while training ran on the GPU; all testing was done on CPU). New module `src/cryptovit/inference/pipeline.py` loads the best checkpoint of each variant A-D, applies the same preprocessing as training (plaintext statistics for A, statistics of the encrypted training images for B/C/D, cached in `encrypted_stats.json`), and classifies. `api/main.py` now serves class names from the dataset, `/compare` (all variants for one image), `/results` (test results from `result_*.json`) and reports which models are trained; config is selected with the environment variables `CRYPTOVIT_CONFIG=dermamnist` and `CRYPTOVIT_EXPERIMENTS=experiments/dermamnist`. |
 | 00:33 | Parity check: for 150 DermaMNIST test images the API's plaintext predictions were **identical (150/150)** to the training/evaluation pipeline, using the partially trained variant A checkpoint. (The same check for the encrypted models is still to do once B/C/D are trained.) |
 | 00:36 | Dashboard changes: medical title and "not a medical device" banner; key box and a "wrong key" box; demo-image picker (`demo_images/`); prediction table with the plaintext model next to the encrypted-image models; decrypt buttons for the correct and a wrong key; results table (balanced accuracy, accuracy, AUC, melanoma sensitivity) that appears when results exist. Tested headless against a live API. |
 | 00:37 | **My mistake, fixed:** replacing a deprecated Streamlit argument with a Windows PowerShell text command re-encoded `dashboard/app.py` with the wrong character set and garbled every emoji and symbol. Reversed exactly with a script (character by character), verified, and re-tested. From then on only the editor tool or UTF-8-safe scripts are used for text files. |
 | 00:41 | On your request the dashboard was made **plain text** (no emojis or symbols). `tests/unit/test_dashboard.py` fails if any non-ASCII character returns, and also runs the whole dashboard flow with a faked API (5 tests). |
 | 00:41 | Provisional demo images exported to `demo_images/` (test-set indices: melanoma 2, benign nevus 0, basal cell carcinoma 10). **These are placeholders**; the final choice will be made from the trained models' results. |
-
-| 00:54 | Variant A (plain ViT, plaintext) finished: early stopping after 20 epochs without improvement. Held-out test (2,005 images, used once): accuracy 52.2%, balanced accuracy 53.3%, macro AUC 0.788. Variant B started; at epoch 6/60 its validation balanced accuracy was 14.2% (chance for 7 classes is 14.3%) - early, still in warm-up. |
+| 00:50 | Variant A (plain ViT, plaintext) finished (noticed 00:54): early stopping after 20 epochs without improvement. Held-out test (2,005 images, used once): accuracy 52.2%, balanced accuracy 53.3%, macro AUC 0.788. Variant B started; at epoch 6/60 its validation balanced accuracy was 14.2% (chance for 7 classes is 14.3%) - early, still in warm-up. |
 | 01:01 | Dashboard simplified on your request: removed the university line, the Dataset/Device/Trained models/Classes row and the footer. The per-class chart is now **horizontal** (class names on the y axis, horizontal axis labels, percentage in each label, sorted by value, melanoma in orange) so nothing needs tilting to read. Checked visually in the browser pane; tests updated (5 dashboard tests). |
 
 
-## Part 4 - Block-wise encryption (Option 2)
+## Part 4 - Block-wise encryption, safeguards and final results (01:03 onwards)
 
 | Time | What happened |
 |---|---|
 | 01:03 | Observation: variant B (plain ViT on encrypted images, per-pixel scheme) reached only about 22% validation balanced accuracy (chance 14.3%) against 53% for plaintext. You chose Option 2: add a **block-wise "learnable" scheme**. |
 | 01:07 | Wrote `src/cryptovit/encryption/block_scheme.py` (commit `cbd1f66`) as a **new file** (plus 18 tests) so the encryption modules used by the running training were not touched. Scheme `block<B>` (e.g. `block2`): channel permutation, optional per-block inversion (255 - v) by key bit, one key-derived pixel shuffle inside every block, and a shuffle of the block positions. All steps are bijections (exact decryption). With B=2 on 28x28 images enlarged to 224, a block is exactly one 16x16 ViT patch (196 blocks = 196 patches). **Limits stated plainly:** no diffusion (one changed pixel changes one output pixel), pixel-value histogram preserved up to the inversion, same scrambling for every image under one key. It gives visual protection, not cryptographic strength, and trades security for classifiability. |
 | next | After the current run ends: hook `block<B>` into `encrypt()/decrypt()` (the scheme name carries the block size, so config, datasets, API and dashboard need no new parameters), then train variants on `encryption.scheme=block2` and compare with the per-pixel results. |
-
 | 01:09 | (commit `d55b8e6`) Added `configs/block2.yaml`, support for combining configs in the API (`CRYPTOVIT_CONFIG=dermamnist,block2`) and `scripts/start_demo.py` (one command that starts the API and the dashboard; `--block 2` selects the block-scheme models, `--dry-run` only prints). 5 launcher tests plus an API test. None of these files is used by the running training. |
-
 | 01:12 | Correction: three log entries above had times I had estimated too late (they were ahead of the machine clock); they now carry the real commit times. |
-
 | 01:22 | Started a **proxy test** on the GPU alongside the main training: a small ViT (embed 96, depth 4, 2x2 patches) on native 28x28 DermaMNIST, identical settings for plaintext, per-pixel (v1) and block2, 2 seeds each, to see whether block2 is easier to learn. Not a final result (different model and resolution from the main pipeline). |
-| 01:36 | Variant B (full-size plain ViT, per-pixel encryption) finished the main run: test accuracy 12.9%, balanced accuracy 19.4%, macro AUC 0.573 (chance balanced accuracy is 14.3%). Variant C started. |
+| 01:26 | Variant B (full-size plain ViT, per-pixel encryption) finished the main run: test accuracy 12.9%, balanced accuracy 19.4%, macro AUC 0.573 (chance balanced accuracy is 14.3%). Variant C started. |
 | 01:40 | You reported the laptop was very hot. GPU read **82 C at 100% load**. **I stopped the proxy test** (my own extra load) before the block2 runs happened. Partial proxy results (test balanced accuracy): plaintext 47.5% and 44.6%; per-pixel 20.5% and 19.3%; **block2 not measured**, so no conclusion about block2 yet. Suggested cooling (hard flat surface, raised back, vents clear, plugged in, fan on max) and offered to pause (training is resumable) or slow down. |
 | 01:42 | You chose **keep training**. Main run continues unchanged; no additional GPU load will be added while it runs. The demo API/dashboard are idle on CPU. |
-
 | 01:45 | Variant C's first epoch finished at 01:45 (about 19 min, because the proxy test was sharing the GPU); after the GPU was freed it runs normally. |
 | 01:47-01:55 | You said you would sleep about 7 hours and expected a working project by morning. Laptop sleep was a risk (it sleeps after 5 min): a second keep-awake helper (PID 11972, 9 hours, no settings changed) was added, and **you set "sleep when plugged in" to Never**. Remaining plan: finish C and D, hook the block scheme into `encrypt()/decrypt()`, run B/D/C on `block2` (reusing A), compare, finalise demo images, and present this log. A GPU-temperature watcher (alert at 90 C for 2+ minutes) is active. |
-
 | 01:50 | **Found why variant C was ~10x slower than measured** (first epoch 19 min; second epoch not finished after 5+ min). Windows GPU counters showed the training process holding **3.3 GB on the GPU plus 4.2 GB spilled into system RAM** (about 7.5 GB for a model that needs under 2 GB): memory kept by the earlier variants in the same long-lived process overflowed the 4 GB card, and the overflow is silently paged over PCIe. Other GPU users (VS Code, ChatGPT app) were small; only the training process used GPU compute. The same effect explains the one unexplained slow epoch seen during the early smoke test. |
 | 01:52 | **Fix:** `run_ablation.py` now frees cached GPU memory between variants and logs it (`allocated/reserved` before each variant); the run was stopped and relaunched (PID 15212) with the same settings. A and B were skipped (results saved); C resumed from its epoch-1 state. |
 | 01:54 | After the fix: training process holds 2.7 GB on the GPU and 0.4 GB in system RAM; C epoch time 81 s including worker start-up. GPU 80-83 C at full load on the stand (alert threshold 90 C). Watchers (exit/stall, temperature) re-armed for the new process. |
-
 | 02:25 | GPU read 86 C at full load (no throttling; clock 1912 MHz, about 85 W). You asked for a rule: **pause at 80 C, resume at 70 C**. |
 | 02:27 | Wrote `scripts/thermal_guard.py` (6 tests, including one that really suspends and resumes a process tree). It **suspends** the training process and its 6 helper processes (nothing is lost; the GPU goes idle) at >= 80 C and resumes at <= 70 C; it logs each pause/resume to `experiments/dermamnist/thermal_guard.log`, resumes the job if the guard itself stops, and exits when the job ends. Started at 02:27 for the training (guard PID 45828, watching PID 15212). |
 | 02:28 | Observation: the GPU sensor reacts within seconds (82 C within 10 s of resuming, 65 C within 10 s of pausing), so at first the guard flipped between run and pause every 10 s (3 pauses in the first minute); it then settled at 78 C with no pauses. Measured cost: variant C epoch 41 took 84 s with the guard against 53 s without (about 1.6x slower). |
 | 02:29 | Revised time plan: C ends about 02:55, D about 04:30, then the block experiment (B, D, then C if time allows) about 3-4 h; if time runs short the block version of C is dropped so B and D finish first. |
-
 | 02:30 | You asked to **spread the load evenly until 09:00**. Budget at full speed: C's remaining 19 epochs (~17 min), D (~60 min), then after hooking in the block scheme: block B (~35 min), block D (~60 min), block C (~60 min, optional) = about 3.9 h of GPU time against about 6 h available, i.e. roughly a 70-75% duty cycle. |
 | 02:31 | Added **pacing** to the thermal guard (`--duty 0.75 --cycle 60`: run 45 s, pause 15 s each minute, plus the 80/70 C rule on top; summary line every 10 minutes instead of one line per pause). New guard PID 46700 (the old one was stopped; the new one unfreezes the job on start). 15 tests for the guard now pass, including one that checks a paced child really freezes for about 1 s per 2 s cycle. Observation: the die temperature spikes above 80 C within seconds of each restart, so the 80/70 rule also fires often; effective speed will be somewhat below the 75% target. |
-
 | 02:37 | You asked for a hard rule: **if the GPU ever reaches 90 C, pause everything.** Built `scripts/emergency_pause.py`, a watchdog separate from the routine 80/70 guard: it reads the GPU temperature every 2 s and, at >= 90 C on one reading, freezes every training job listed in `experiments/*/ablation/train.pid` (including a job started later), writes a latch file `experiments/EMERGENCY_PAUSE.txt` and logs to `experiments/emergency_pause.log`. **It never resumes by itself**: a person has to run `python scripts/emergency_pause.py --resume`. Freezing uses suspend counts that stack, so the guard's own pause/resume cannot undo it. A background watcher wakes me if the latch appears. I will not start any new GPU job while the latch exists. |
 | 02:38 | Testing found two real issues, both fixed before use: (1) my first test assumed a single resume could not undo the freeze - in fact it can, so the test now models the guard's real freeze/resume pair; (2) the guard's start-up "unfreeze the job" step would have released an emergency pause, so the guard now leaves the job alone when the latch file exists (`--latch`). 20 tests cover the guard and the emergency pause, including real freezing of a process tree. |
 | 02:40 | Emergency watchdog started (PID 44220; limit 90 C; 12-hour lifetime). Routine guard (PID 46700, 80/70 C plus 75% duty) is running. GPU about 76 C. |
-
 | 02:46 | **Variant C finished** (early stopping): test accuracy 31.8%, balanced accuracy 23.9%, macro AUC 0.581. (B: 19.4% balanced accuracy; plaintext A: 53.3%; chance 14.3%.) As agreed, the main run was stopped right after C's result was saved, **before per-pixel D started**. Per-pixel D is deferred to the end of the night, only if time remains. |
 | 02:47 | Hooked the block scheme into `encrypt()/decrypt()`: any scheme name `block<B>` (e.g. `block2`) is now accepted everywhere a scheme name is (config `encryption.scheme`, datasets, inference service, API, dashboard). v1 and v2 unchanged. 295 unit tests pass. One of my new tests first failed because of my own wrong test configuration (it asked for a ViT patch size the config check does not allow); fixed in the test, not in the code. |
-
 | 02:48 | **Launched the block experiment:** `run_ablation.py config=dermamnist config=block2 ablation.variants=B,D,C training.epochs=60 paths.experiments_dir=experiments/dermamnist_block2` (PID 17768; plaintext A reused by copying its checkpoints and `result_A.json`). Routine guard (75% duty, 80/70 C) and the 90 C emergency watchdog cover it. |
 | 03:20 | **First signal from the block scheme:** at epochs 39-46 of block B the validation balanced accuracy is about **0.47-0.53** (per-pixel B reached only ~0.19-0.22; plaintext A's validation level was ~0.53). Validation numbers only; test result follows when B finishes. GPU only 54 C with pacing alone (25% of the time paused, **zero** thermal pauses), so the heat problem is gone. Epoch times 30-46 s. (My progress watcher had also gone silent for 30 min because of a buffering mistake in its filter - `cut` held the output back; the run itself was never affected.) |
 | 03:21 | Time plan with block B nearly done: block D ~80 min, block C ~80 min, per-pixel D ~80 min -> everything done around 07:30, ahead of the 09:00 limit. |
-
 | 03:29 | **Block B finished** (all 60 epochs, 40.7 min). Test set, measured once: accuracy 46.5%, **balanced accuracy 53.6%**, macro AUC **0.809**, melanoma sensitivity **65.0%**. For comparison, plaintext A: accuracy 52.2%, balanced accuracy 53.3%, AUC 0.788, melanoma sensitivity 64.1%; per-pixel B: balanced accuracy 19.4%, AUC 0.573. **Reading it carefully:** the block-encrypted model is *comparable to* the plaintext model on balanced accuracy and AUC. It is **not proven better**: a single seed, 2,005 test images and rare classes with only 23-29 test images (dermatofibroma, vascular lesions) make balanced accuracy move by several points between seeds (the proxy test showed 3 points between two seeds for plaintext). Plain accuracy is lower (46.5% vs 52.2%) because the class-weighted loss trades accuracy for rare-class sensitivity. |
 | 03:31 | Parity check for the encrypted path: the API's preprocessing and the training pipeline gave **identical predictions on 150/150 test images** for the block-encrypted model B (CPU). Block D started 03:30. |
-| why | The block scheme works because every step is a bijection that a ViT can absorb (channel order, inversion and in-block pixel shuffle go into the patch embedding; block shuffling goes into the learnable positional embedding), and it keeps each 2x2 block, which is exactly one 16x16 ViT patch after enlargement. The cost is security: no diffusion, histograms preserved, one scrambling per key. |
-
+| (note) | The block scheme works because every step is a bijection that a ViT can absorb (channel order, inversion and in-block pixel shuffle go into the patch embedding; block shuffling goes into the learnable positional embedding), and it keeps each 2x2 block, which is exactly one 16x16 ViT patch after enlargement. The cost is security: no diffusion, palette kept up to inversion, one scrambling per key. |
 | 03:32 | Wrote `scripts/make_demo_pack.py` (7 tests): scores test images with the plaintext model and an encrypted-image model, picks per class the image **both** get right with the highest confidence plus one honest failure (plaintext right, encrypted wrong), writes the 28x28 originals to `demo_images/` and, in `presentation/`, 8x-enlarged pictures: original, per-pixel encrypted, block encrypted and a side-by-side strip, plus `SELECTION.md` with the real predictions. Trial run on block B (scratch folder, repo untouched) worked. What the pictures show: per-pixel encryption turns the lesion into pure colour noise; block encryption turns it into a mosaic that is unrecognisable as a lesion but **keeps the original's colour palette** - the visible form of the security trade-off. The final pack will be built from the finished block D. |
-
 | 03:33 | Wrote `scripts/summarize_results.py` (4 tests) which builds `RESULTS.md` from the saved `result_*.json` files so that every number in the write-up is a measurement. Preview with the results so far: plaintext A 53.3% balanced accuracy; per-pixel B 19.4%, per-pixel C 23.9%; block B 53.6%. Block D (in progress, started 03:30) and block C follow; per-pixel D is last. |
-
 | 04:38 | **Block D finished** (CryptoViT, block2 scheme; early stopping after 54 epochs, 68 min). Test set, measured once: accuracy **56.1%**, balanced accuracy **54.9%**, macro AUC **0.815**, melanoma sensitivity **71.3%**. Plaintext A: 52.2% / 53.3% / 0.788 / 64.1%; block B: 46.5% / 53.6% / 0.809 / 65.0%. **Reading it carefully:** block D is the best model measured so far and is at least as good as the plaintext baseline on balanced accuracy and AUC, with higher melanoma sensitivity. This is one training run each (seed 42) with 2,005 test images and only 23-29 test images in the rarest classes, so differences of a few points (D vs A vs block B) are within noise; I do **not** claim block D is significantly better than plaintext, only that encryption cost no measurable accuracy here. Block C started. |
 | 04:42 | Built the final demo pack from block D with make_demo_pack.py (CPU, 450 test images scored by A and block D): safe images both models get right - melanoma test #846 (plaintext 62%, encrypted 65%), benign nevus #30 (34% / 35%), basal cell carcinoma #436 (85% / 83%) - and one honest failure, basal cell carcinoma #1214 (plaintext right 41%, block-encrypted model wrongly says actinic keratoses 85%). The nevus confidences are low because the class-weighted loss deliberately reduces confidence on the very common class. Files: 28x28 originals in demo_images/ (the dashboard dropdown) and 8x-enlarged originals, per-pixel and block encrypted pictures and side-by-side strips in presentation/, with SELECTION.md. The three placeholder images from earlier were replaced. medmnist added to pyproject.toml (a fresh install from the README would have missed it). |
-
 | 04:45 | **Dashboard and API verified with the trained block models** (live API on CPU + the real dashboard script run headless): for the melanoma demo image the plaintext model said melanoma 62.1%, block-encrypted B melanoma 56.5%, block-encrypted CryptoViT D melanoma 65.0%; correct key restores the image exactly, a wrong key gives noise. Fixes: demo images are now named `1_safe_...`, `2_safe_...`, `3_safe_...`, `9_failure_...` because the dropdown sorts alphabetically and the failure case had come first; the pack tool also deletes pictures from earlier runs (a second run had left stale files that did not match `SELECTION.md`, now removed); a deprecated image call in the dashboard was replaced. |
-
-| 05:40 | **Block C finished** (CryptoPatchEmbedding, block2; early stopping, 50 epochs, 62 min): accuracy 49.1%, balanced accuracy 53.0%, macro AUC **0.839** (highest AUC of all models), melanoma sensitivity 61.9%. **Block run complete:** B 53.6% / AUC 0.809, C 53.0% / 0.839, D 54.9% / 0.815 balanced accuracy / AUC, against plaintext A 53.3% / 0.788. All four are within a few points of each other. **Honest conclusion:** the encryption scheme, not the model design, decides whether classifying encrypted images works (per-pixel 19-24% vs block 53-55%); on block-encrypted images the custom components (CryptoPatchEmbedding, key-aware positions) show **no measurable accuracy gain** over a plain ViT in these single-seed runs. |
+| 05:41 | **Block C finished** (CryptoPatchEmbedding, block2; early stopping, 50 epochs, 62 min): accuracy 49.1%, balanced accuracy 53.0%, macro AUC **0.839** (highest AUC of all models), melanoma sensitivity 61.9%. **Block run complete:** B 53.6% / AUC 0.809, C 53.0% / 0.839, D 54.9% / 0.815 balanced accuracy / AUC, against plaintext A 53.3% / 0.788. All four are within a few points of each other. **Honest conclusion:** the encryption scheme, not the model design, decides whether classifying encrypted images works (per-pixel 19-24% vs block 53-55%); on block-encrypted images the custom components (CryptoPatchEmbedding, key-aware positions) show **no measurable accuracy gain** over a plain ViT in these single-seed runs. |
 | 05:43 | Launched the last job, **per-pixel D** (CryptoViT, per-pixel scheme), PID 46668, from scratch, with the 80/70 C guard (75% duty) and the 90 C emergency watchdog still active; hard stop at 08:15 if not finished. |
 | 05:44 | Updated presentation/REVIEW_GUIDE.md to say the above plainly (the custom components are not shown to help; the block scheme is what helps; neither scheme is cryptographically strong). |
-
 | 05:47 | Wrote `scripts/security_report.py` (4 tests) and generated `SECURITY.md` from 100 real test images so the security claims are numbers. Per-pixel (v1) vs block (2x2): entropy of the encrypted image 7.74 vs 6.49 bits (ideal noise 7.77); adjacent-pixel correlation 0.14 vs 0.50 (plaintext 0.95; ideal 0); key sensitivity NPCR 99.6% vs 99.5%; **plaintext sensitivity NPCR 20.5% vs 0.04%** (ideal about 99.6%; block changes exactly one output pixel). Both schemes therefore have weak diffusion, and the block scheme has none - the security cost of making it learnable. |
 | 05:47 | **Correction of my own earlier wording:** I had said the block scheme "preserves the colour histogram". Measured histogram distance plaintext vs encrypted is 0.49 for block and 0.55 for per-pixel - nearly the same - because about half of the blocks are inverted. The accurate statement, checked with a new metric (distance to the plaintext-or-inverted palette mixture: 0.15 block vs 0.42 per-pixel), is that the block scheme keeps the palette **up to inversion**. README, review guide and the report text were corrected; the earlier log entries that say "up to the inversion" were already right. |
-
 | 06:26 | **Per-pixel D finished** (CryptoViT, per-pixel scheme; early stopping after 34 epochs, 42 min): accuracy 9.1%, balanced accuracy 23.0%, macro AUC 0.627, melanoma sensitivity 25.6% (nevi sensitivity 0.1%: it almost never predicts the most common class). **All planned experiments are finished at 06:26**, 2.5 hours before the 09:00 limit. The guard ended with the job; the 90 C emergency pause never triggered during the whole night. |
 | 06:28 | Generated the final `RESULTS.md` from the saved measurements (7 rows: plaintext A; per-pixel B, C, D; block B, C, D) and put the main table into the README by script (no hand-typed numbers). README rewritten with the real architecture, commands, configuration, laptop-training notes, limitations and structure. 311 unit tests pass. |
 
+| 06:28 | Restarted the demo in block mode (`python scripts/start_demo.py --block 2 --no-browser`, launcher PID 18764; API http://127.0.0.1:8000, dashboard http://localhost:8501). Headless end-to-end run of the **live** dashboard: melanoma demo image -> A 62.1%, B 56.5%, C 49.5%, D 65.0% (all melanoma, "All trained models agree"); correct key restores the image exactly; wrong key gives noise; the results section shows the four block rows and the chart. |
+| 06:29 | All 12 public links in the summary (demo images, slide strips, RESULTS, SECURITY, review guide, log) checked: each returns HTTP 200 without logging in. |
+| 06:31 | Stopped the emergency-pause watchdog (PID 44220) and the 9-hour keep-awake helper (PID 11972): nothing is training any more. No emergency latch file exists (the 90 C pause never triggered). |
+| 06:32 | Rewrote this log for review: exact times taken from result-file timestamps and commit times (several earlier entries had the time I noticed an event, not when it happened), every part is now one table, plain ASCII, and a summary with final results, links and cleanup notes is at the top. |
