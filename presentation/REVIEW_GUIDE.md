@@ -35,7 +35,9 @@ scrambling decides it.
    16x16 patch after enlargement, and the scrambling steps are things a ViT can absorb (patch embedding
    and learnable positions).
 8. **Honest security picture.** Show the side-by-side strip: per-pixel is pure noise; block keeps the
-   colour palette (histogram preserved, no diffusion). We trade security for classifiability.
+   colour palette up to inversion and has no diffusion. Quote `SECURITY.md`: changing one pixel
+   changes 20.5% of the output for per-pixel and 0.04% (one pixel) for block, against about 99.6% for
+   a good cipher. We trade security for classifiability.
 9. **Live demo** (below).
 10. **Limitations and Phase 2.** See the end of this file.
 
@@ -62,7 +64,8 @@ Offline backup: the enlarged pictures in `presentation/` and a screen recording 
   model never does.
 * **Is the block scheme secure?** No, not cryptographically. It gives visual protection: the picture is
   unrecognisable and the key is needed to restore it, but there is no diffusion (one changed pixel
-  changes one output pixel), the colour histogram is preserved, and one scrambling is used per key.
+  changes one output pixel), the colour palette is kept up to inversion, and one scrambling is used
+  per key.
   The per-pixel scheme scrambles much more but even it has weak diffusion (changing one pixel changes
   only part of the output). Neither replaces a standard cipher like AES.
 * **Is the encrypted model really as good as plaintext?** On balanced accuracy and AUC it is comparable
