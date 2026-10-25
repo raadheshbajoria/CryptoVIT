@@ -17,32 +17,42 @@ from cryptovit.training import Trainer
 
 
 def _cfg(epochs=1, accumulation_steps=1, warmup_epochs=0):
-    return OmegaConf.create({
-        "training": {
-            "epochs": epochs,
-            "batch_size": 4,
-            "accumulation_steps": accumulation_steps,
-            "mixed_precision": False,
-            "learning_rate": 1e-3,
-            "weight_decay": 0.05,
-            "betas": [0.9, 0.999],
-            "warmup_epochs": warmup_epochs,
-            "min_lr": 1e-6,
-            "label_smoothing": 0.0,
-            "clip_grad_norm": 1.0,
-            "save_every_n_epochs": 100,
-            "keep_best_k": 1,
-            "early_stopping_patience": 100,
-        },
-        "logging": {"use_tensorboard": False},
-    })
+    return OmegaConf.create(
+        {
+            "training": {
+                "epochs": epochs,
+                "batch_size": 4,
+                "accumulation_steps": accumulation_steps,
+                "mixed_precision": False,
+                "learning_rate": 1e-3,
+                "weight_decay": 0.05,
+                "betas": [0.9, 0.999],
+                "warmup_epochs": warmup_epochs,
+                "min_lr": 1e-6,
+                "label_smoothing": 0.0,
+                "clip_grad_norm": 1.0,
+                "save_every_n_epochs": 100,
+                "keep_best_k": 1,
+                "early_stopping_patience": 100,
+            },
+            "logging": {"use_tensorboard": False},
+        }
+    )
 
 
 def _tiny_cryptovit():
     return CryptoViT(
-        image_size=16, patch_size=8, in_channels=3, num_classes=3,
-        embed_dim=16, depth=1, num_heads=2, hidden_dim=4,
-        dropout=0.0, drop_path_rate=0.0, key_embed_dim=32,
+        image_size=16,
+        patch_size=8,
+        in_channels=3,
+        num_classes=3,
+        embed_dim=16,
+        depth=1,
+        num_heads=2,
+        hidden_dim=4,
+        dropout=0.0,
+        drop_path_rate=0.0,
+        key_embed_dim=32,
     )
 
 
@@ -97,21 +107,19 @@ def _small_loader(labels):
 def test_evaluate_model_forwards_key_embedding():
     model = _RecordingModel()
     key = torch.ones(1, 8)
-    evaluate_model(model, _small_loader([0, 1, 2, 0]), torch.device("cpu"),
-                   num_classes=3, key_embedding=key)
+    evaluate_model(
+        model, _small_loader([0, 1, 2, 0]), torch.device("cpu"), num_classes=3, key_embedding=key
+    )
     assert model.seen_keys and all(k is not None for k in model.seen_keys)
 
     model = _RecordingModel()
-    evaluate_model(model, _small_loader([0, 1, 2, 0]), torch.device("cpu"),
-                   num_classes=3)
+    evaluate_model(model, _small_loader([0, 1, 2, 0]), torch.device("cpu"), num_classes=3)
     assert all(k is None for k in model.seen_keys)
 
 
 def test_evaluate_model_per_class_length_is_fixed_when_class_missing():
     model = _RecordingModel(num_classes=5)
-    # Only classes 0 and 1 occur in the labels; num_classes is 5.
-    results = evaluate_model(model, _small_loader([0, 1, 0, 1]),
-                             torch.device("cpu"), num_classes=5)
+    results = evaluate_model(model, _small_loader([0, 1, 0, 1]), torch.device("cpu"), num_classes=5)
     assert len(results["per_class_precision"]) == 5
     assert len(results["per_class_recall"]) == 5
     assert len(results["per_class_f1"]) == 5
@@ -137,7 +145,7 @@ def test_lr_schedule_completes_with_gradient_accumulation(tmp_path):
     model = nn.Sequential(nn.Flatten(), nn.Linear(3 * 4 * 4, 2))
     x = torch.randn(16, 3, 4, 4)
     y = torch.randint(0, 2, (16,))
-    loader = DataLoader(TensorDataset(x, y), batch_size=4)  # 4 batches / epoch
+    loader = DataLoader(TensorDataset(x, y), batch_size=4)
     cfg = _cfg(epochs=3, accumulation_steps=2)
     trainer = Trainer(model, cfg, torch.device("cpu"), tmp_path)
     history = trainer.fit(loader, loader)

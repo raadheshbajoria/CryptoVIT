@@ -28,7 +28,7 @@ def test_encrypt_decrypt_round_trip_and_meta():
     assert meta["scheme"] == "block2"
     assert enc.shape == img.shape and enc.dtype == np.uint8
     assert not np.array_equal(enc, img)
-    assert np.array_equal(decrypt(enc, "key", meta, STEPS), img)          # scheme from meta
+    assert np.array_equal(decrypt(enc, "key", meta, STEPS), img)
     assert np.array_equal(decrypt(enc, "key", None, STEPS, scheme="block2"), img)
 
 
@@ -84,9 +84,14 @@ def test_dataset_loader_uses_the_block_scheme():
         def __getitem__(self, i):
             return Image.fromarray(self.imgs[i]), self.targets[i]
 
-    base = ["dataset.image_size=28", "dataset.num_workers=0", "dataset.pin_memory=false",
-            "encryption.transient_steps=50", "training.batch_size=8",
-            "evaluation.batch_size=8"]
+    base = [
+        "dataset.image_size=28",
+        "dataset.num_workers=0",
+        "dataset.pin_memory=false",
+        "encryption.transient_steps=50",
+        "training.batch_size=8",
+        "evaluation.batch_size=8",
+    ]
     first = {}
     for scheme in ("v1", "block2"):
         cfg = load_config(overrides=["config=dermamnist"] + base + [f"encryption.scheme={scheme}"])
@@ -111,15 +116,17 @@ def test_api_encrypts_and_decrypts_with_the_block_scheme(tmp_path, monkeypatch):
     original = _img((28, 28, 3), seed=5)
     with TestClient(app) as client:
         assert client.get("/health").json()["encryption_scheme"] == "block2"
-        enc = client.post("/encrypt", files={"file": ("a.png", png(original), "image/png")},
-                          data={"key": "k"})
+        enc = client.post(
+            "/encrypt", files={"file": ("a.png", png(original), "image/png")}, data={"key": "k"}
+        )
         assert enc.status_code == 200
-        dec = client.post("/decrypt", files={"file": ("e.png", enc.content, "image/png")},
-                          data={"key": "k"})
+        dec = client.post(
+            "/decrypt", files={"file": ("e.png", enc.content, "image/png")}, data={"key": "k"}
+        )
         restored = np.array(Image.open(io.BytesIO(dec.content)).convert("RGB"))
         assert np.array_equal(restored, original)
-        cmp = client.post("/compare", files={"file": ("a.png", png(original), "image/png")},
-                          data={"key": "k"})
+        cmp = client.post(
+            "/compare", files={"file": ("a.png", png(original), "image/png")}, data={"key": "k"}
+        )
         assert cmp.status_code == 200
-        # metrics (entropy etc.) are computed for the block scheme too
         assert client.get("/metrics").status_code == 200

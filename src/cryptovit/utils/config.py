@@ -19,8 +19,6 @@ from omegaconf import DictConfig, OmegaConf
 
 logger = logging.getLogger(__name__)
 
-# Project root is three levels up from this file:
-# src/cryptovit/utils/config.py  -> src/cryptovit/utils -> src/cryptovit -> src -> project_root
 _THIS_FILE = Path(__file__).resolve()
 PROJECT_ROOT = _THIS_FILE.parents[3]
 CONFIGS_DIR = PROJECT_ROOT / "configs"
@@ -53,9 +51,6 @@ def load_config(
     if not base_path.exists():
         raise FileNotFoundError(f"Base config not found: {base_path}")
 
-    # `config=<name>` on the command line selects an extra YAML in configs/
-    # (e.g. `config=dermamnist` merges configs/dermamnist.yaml). It is applied
-    # before the other dotted overrides so those still win.
     overrides = list(overrides or [])
     cli_configs = [o.split("=", 1)[1] for o in overrides if o.startswith("config=")]
     overrides = [o for o in overrides if not o.startswith("config=")]
@@ -79,7 +74,6 @@ def load_config(
         cfg = OmegaConf.merge(cfg, cli_cfg)
         logger.debug("Applied CLI overrides: %s", overrides)
 
-    # Resolve project root to an absolute path so downstream code can use it
     OmegaConf.update(cfg, "paths.project_root", str(PROJECT_ROOT), merge=False)
 
     _validate_config(cfg)
@@ -90,16 +84,18 @@ def load_config(
 def _validate_config(cfg: DictConfig) -> None:
     """Run basic sanity checks on the merged configuration."""
     num_classes_map = {
-        "cifar10": 10, "cifar100": 100,
-        # MedMNIST single-label classification datasets
-        "dermamnist": 7, "pathmnist": 9, "bloodmnist": 8,
-        "pneumoniamnist": 2, "octmnist": 4,
+        "cifar10": 10,
+        "cifar100": 100,
+        "dermamnist": 7,
+        "pathmnist": 9,
+        "bloodmnist": 8,
+        "pneumoniamnist": 2,
+        "octmnist": 4,
     }
     allowed_datasets = set(num_classes_map)
     if cfg.dataset.name not in allowed_datasets:
         raise ValueError(
-            f"dataset.name must be one of {sorted(allowed_datasets)}, "
-            f"got '{cfg.dataset.name}'"
+            f"dataset.name must be one of {sorted(allowed_datasets)}, got '{cfg.dataset.name}'"
         )
 
     expected = num_classes_map[cfg.dataset.name]
@@ -121,7 +117,7 @@ def _validate_config(cfg: DictConfig) -> None:
 
 def get_device(cfg: DictConfig):
     """Return the torch device based on config and hardware availability."""
-    import torch  # local import to keep this module lightweight
+    import torch
 
     preference = cfg.hardware.device
     if preference == "auto":

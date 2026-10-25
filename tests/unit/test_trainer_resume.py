@@ -14,24 +14,33 @@ from cryptovit.training import Trainer
 
 
 def _cfg(epochs, patience=100):
-    return OmegaConf.create({
-        "training": {
-            "epochs": epochs, "batch_size": 4, "accumulation_steps": 1,
-            "mixed_precision": False, "learning_rate": 1e-2, "weight_decay": 0.01,
-            "betas": [0.9, 0.999], "warmup_epochs": 1, "min_lr": 1e-5,
-            "label_smoothing": 0.0, "clip_grad_norm": 1.0,
-            "save_every_n_epochs": 100, "keep_best_k": 2,
-            "early_stopping_patience": patience,
-        },
-        "logging": {"use_tensorboard": False},
-    })
+    return OmegaConf.create(
+        {
+            "training": {
+                "epochs": epochs,
+                "batch_size": 4,
+                "accumulation_steps": 1,
+                "mixed_precision": False,
+                "learning_rate": 1e-2,
+                "weight_decay": 0.01,
+                "betas": [0.9, 0.999],
+                "warmup_epochs": 1,
+                "min_lr": 1e-5,
+                "label_smoothing": 0.0,
+                "clip_grad_norm": 1.0,
+                "save_every_n_epochs": 100,
+                "keep_best_k": 2,
+                "early_stopping_patience": patience,
+            },
+            "logging": {"use_tensorboard": False},
+        }
+    )
 
 
 def _data():
     g = torch.Generator().manual_seed(0)
     x = torch.randn(16, 3, 4, 4, generator=g)
     y = torch.randint(0, 2, (16,), generator=g)
-    # shuffle=False so an interrupted + resumed run sees identical batches
     return DataLoader(TensorDataset(x, y), batch_size=4, shuffle=False)
 
 
@@ -104,7 +113,7 @@ def test_best_checkpoint_survives_resume(tmp_path):
 
     resumed = Trainer(_model(), _cfg(3), torch.device("cpu"), tmp_path)
     resumed.fit(loader, loader, resume=True)
-    resumed.load_best_checkpoint()  # must find a saved best checkpoint
+    resumed.load_best_checkpoint()
 
 
 def test_last_checkpoint_has_no_leftover_temp_file(tmp_path):

@@ -11,7 +11,7 @@ from cryptovit.encryption.encrypt import SCHEMES, verify_roundtrip
 from cryptovit.encryption.key_generator import KeyGenerator
 from cryptovit.encryption.permutation import inverse_permute_image, permute_image
 
-STEPS = 100  # shorter warm-up keeps tests fast; behaviour is identical
+STEPS = 100
 
 
 def _img(shape, seed=0):
@@ -62,13 +62,12 @@ def test_decrypt_reads_scheme_from_meta_and_explicit_scheme_wins():
     enc, meta = encrypt(img, "k", STEPS, scheme="v2")
     assert np.array_equal(decrypt(enc, "k", meta, STEPS), img)
     assert np.array_equal(decrypt(enc, "k", None, STEPS, scheme="v2"), img)
-    # Decrypting a v2 ciphertext as v1 must not recover the image.
     assert not np.array_equal(decrypt(enc, "k", None, STEPS, scheme="v1"), img)
 
 
 def test_decrypt_without_meta_defaults_to_v1():
     img = _img((8, 8, 3))
-    enc, _ = encrypt(img, "k", STEPS)  # v1
+    enc, _ = encrypt(img, "k", STEPS)
     assert np.array_equal(decrypt(enc, "k", None, STEPS), img)
 
 
@@ -87,7 +86,7 @@ def test_identical_channels_leak_in_v1_but_not_v2():
     triple = np.stack([gray, gray, gray], axis=-1)
     v1, _ = encrypt(triple, "k", STEPS, scheme="v1")
     v2, _ = encrypt(triple, "k", STEPS, scheme="v2")
-    assert np.array_equal(v1[..., 0], v1[..., 1])          # known v1 limitation
+    assert np.array_equal(v1[..., 0], v1[..., 1])
     assert not np.array_equal(v2[..., 0], v2[..., 1])
     assert not np.array_equal(v2[..., 1], v2[..., 2])
 
@@ -104,13 +103,12 @@ class TestUniformPermutation:
         n = 1024
         p = KeyGenerator("k", transient_steps=STEPS).channel_permutations(n, 1)[0]
         mean_jump = np.mean(np.abs(np.diff(p)))
-        # E|p[i+1]-p[i]| for a uniform random permutation is about n / 3.
         assert mean_jump == pytest.approx(n / 3, rel=0.10)
 
     def test_few_fixed_points(self):
         n = 1024
         p = KeyGenerator("k", transient_steps=STEPS).channel_permutations(n, 1)[0]
-        assert (p == np.arange(n)).sum() <= 8   # expected ~1 for a random permutation
+        assert (p == np.arange(n)).sum() <= 8
 
     def test_deterministic_per_key(self):
         a = KeyGenerator("k", transient_steps=STEPS).channel_permutations(64, 3)

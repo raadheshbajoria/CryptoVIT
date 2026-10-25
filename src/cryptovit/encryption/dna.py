@@ -44,8 +44,8 @@ Implementation notes
 * All operations are vectorised using NumPy for speed.
 * The DNA symbols are stored as uint8 integers (0=A, 1=T, 2=C, 3=G)
   internally; no string conversion is needed.
-* Input images are uint8 (0–255); each pixel is split into four
-  2-bit groups → four DNA bases.
+* Input images are uint8 (0-255); each pixel is split into four
+  2-bit groups -> four DNA bases.
 """
 
 from __future__ import annotations
@@ -56,62 +56,57 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Encoding / decoding lookup tables
-# ---------------------------------------------------------------------------
 
-# Shape: (8, 4)   axis-0 = rule index [0,7], axis-1 = 2-bit value [0,3]
-# Entry: DNA base (0=A,1=T,2=C,3=G)
-_ENCODE_TABLE = np.array([
-    [0, 1, 3, 2],   # rule 0: 00→A 01→T 10→G 11→C
-    [0, 2, 3, 1],   # rule 1: 00→A 01→C 10→G 11→T
-    [1, 0, 2, 3],   # rule 2: 00→T 01→A 10→C 11→G
-    [1, 3, 2, 0],   # rule 3: 00→T 01→G 10→C 11→A
-    [2, 0, 1, 3],   # rule 4: 00→C 01→A 10→T 11→G
-    [2, 3, 1, 0],   # rule 5: 00→C 01→G 10→T 11→A
-    [3, 0, 2, 1],   # rule 6: 00→G 01→A 10→C 11→T
-    [3, 1, 2, 0],   # rule 7: 00→G 01→T 10→C 11→A
-], dtype=np.uint8)
+_ENCODE_TABLE = np.array(
+    [
+        [0, 1, 3, 2],
+        [0, 2, 3, 1],
+        [1, 0, 2, 3],
+        [1, 3, 2, 0],
+        [2, 0, 1, 3],
+        [2, 3, 1, 0],
+        [3, 0, 2, 1],
+        [3, 1, 2, 0],
+    ],
+    dtype=np.uint8,
+)
 
-# Decoding is the inverse: _DECODE_TABLE[rule, base] → 2-bit value
 _DECODE_TABLE = np.zeros((8, 4), dtype=np.uint8)
 for _r in range(8):
     for _bits in range(4):
         _base = _ENCODE_TABLE[_r, _bits]
         _DECODE_TABLE[_r, _base] = _bits
 
-# ---------------------------------------------------------------------------
-# DNA XOR table: shape (4, 4), entry = XOR of two DNA bases
-# ---------------------------------------------------------------------------
-# In Z_4 cyclic group: XOR = (A XOR B mod 4) treating A=0,T=1,C=2,G=3
-# This is standard DNA XOR used in image encryption literature.
-_DNA_XOR = np.array([
-    [0, 1, 2, 3],   # A XOR {A,T,C,G} = {A,T,C,G}
-    [1, 0, 3, 2],   # T XOR {A,T,C,G} = {T,A,G,C}
-    [2, 3, 0, 1],   # C XOR {A,T,C,G} = {C,G,A,T}
-    [3, 2, 1, 0],   # G XOR {A,T,C,G} = {G,C,T,A}
-], dtype=np.uint8)
+_DNA_XOR = np.array(
+    [
+        [0, 1, 2, 3],
+        [1, 0, 3, 2],
+        [2, 3, 0, 1],
+        [3, 2, 1, 0],
+    ],
+    dtype=np.uint8,
+)
 
-# DNA ADD table (cyclic addition mod 4)
-_DNA_ADD = np.array([
-    [0, 1, 2, 3],   # A + {A,T,C,G} = {A,T,C,G}
-    [1, 2, 3, 0],   # T + {A,T,C,G} = {T,C,G,A}
-    [2, 3, 0, 1],   # C + {A,T,C,G} = {C,G,A,T}
-    [3, 0, 1, 2],   # G + {A,T,C,G} = {G,A,T,C}
-], dtype=np.uint8)
+_DNA_ADD = np.array(
+    [
+        [0, 1, 2, 3],
+        [1, 2, 3, 0],
+        [2, 3, 0, 1],
+        [3, 0, 1, 2],
+    ],
+    dtype=np.uint8,
+)
 
-# DNA SUB table (cyclic subtraction mod 4)
-_DNA_SUB = np.array([
-    [0, 3, 2, 1],   # A - {A,T,C,G} = {A,G,C,T}
-    [1, 0, 3, 2],   # T - {A,T,C,G} = {T,A,G,C}
-    [2, 1, 0, 3],   # C - {A,T,C,G} = {C,T,A,G}
-    [3, 2, 1, 0],   # G - {A,T,C,G} = {G,C,T,A}
-], dtype=np.uint8)
+_DNA_SUB = np.array(
+    [
+        [0, 3, 2, 1],
+        [1, 0, 3, 2],
+        [2, 1, 0, 3],
+        [3, 2, 1, 0],
+    ],
+    dtype=np.uint8,
+)
 
-
-# ---------------------------------------------------------------------------
-# Encoding: pixel array → DNA array
-# ---------------------------------------------------------------------------
 
 def encode(
     pixels: np.ndarray,
@@ -122,27 +117,26 @@ def encode(
     Parameters
     ----------
     pixels : (...) uint8 array
-        Pixel values (0–255).  Can be any shape.
+        Pixel values (0-255).  Can be any shape.
     rule : int or (pixels.shape) uint8 array
-        DNA encoding rule index (0–7) or a per-pixel rule array.
+        DNA encoding rule index (0-7) or a per-pixel rule array.
 
     Returns
     -------
     dna : (..., 4) uint8 array
-        Four DNA bases (0–3) per pixel, MSB first.
+        Four DNA bases (0-3) per pixel, MSB first.
         Shape is ``pixels.shape + (4,)``.
     """
     if pixels.dtype != np.uint8:
         pixels = pixels.astype(np.uint8)
 
-    # Extract four 2-bit groups from each pixel (MSB first)
-    b3 = (pixels >> 6) & 0x3   # bits 7-6
-    b2 = (pixels >> 4) & 0x3   # bits 5-4
-    b1 = (pixels >> 2) & 0x3   # bits 3-2
-    b0 = pixels & 0x3           # bits 1-0
+    b3 = (pixels >> 6) & 0x3
+    b2 = (pixels >> 4) & 0x3
+    b1 = (pixels >> 2) & 0x3
+    b0 = pixels & 0x3
 
     if isinstance(rule, int):
-        tbl = _ENCODE_TABLE[rule]   # (4,)
+        tbl = _ENCODE_TABLE[rule]
         d3 = tbl[b3]
         d2 = tbl[b2]
         d1 = tbl[b1]
@@ -154,7 +148,7 @@ def encode(
         d1 = _ENCODE_TABLE[rule, b1]
         d0 = _ENCODE_TABLE[rule, b0]
 
-    return np.stack([d3, d2, d1, d0], axis=-1)   # (..., 4)
+    return np.stack([d3, d2, d1, d0], axis=-1)
 
 
 def decode(
@@ -177,7 +171,7 @@ def decode(
     d3, d2, d1, d0 = dna[..., 0], dna[..., 1], dna[..., 2], dna[..., 3]
 
     if isinstance(rule, int):
-        tbl = _DECODE_TABLE[rule]   # (4,)
+        tbl = _DECODE_TABLE[rule]
         b3 = tbl[d3]
         b2 = tbl[d2]
         b1 = tbl[d1]
@@ -192,16 +186,12 @@ def decode(
     return ((b3 << 6) | (b2 << 4) | (b1 << 2) | b0).astype(np.uint8)
 
 
-# ---------------------------------------------------------------------------
-# DNA arithmetic operations
-# ---------------------------------------------------------------------------
-
 def dna_xor(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Element-wise DNA XOR of two DNA arrays.
 
     Parameters
     ----------
-    a, b : same-shape uint8 arrays (values 0–3)
+    a, b : same-shape uint8 arrays (values 0-3)
 
     Returns
     -------

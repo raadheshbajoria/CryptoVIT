@@ -40,16 +40,13 @@ def setup_logging(
 
     root = logging.getLogger()
     root.setLevel(numeric_level)
-    # Avoid duplicate handlers if called multiple times
     root.handlers.clear()
 
-    # --- Console handler ---
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(numeric_level)
     console_handler.setFormatter(formatter)
     root.addHandler(console_handler)
 
-    # --- File handler (optional) ---
     if log_file is not None:
         log_file = Path(log_file)
         log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +55,4 @@ def setup_logging(
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
 
-    logging.getLogger(__name__).info(
-        "Logging initialised (level=%s, file=%s).", level, log_file
-    )
+    logging.getLogger(__name__).info("Logging initialised (level=%s, file=%s).", level, log_file)

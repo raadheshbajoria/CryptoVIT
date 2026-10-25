@@ -30,16 +30,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Start the CryptoViT API and dashboard.")
-    p.add_argument("--dataset-config", default="dermamnist",
-                   help="dataset config in configs/ (default: dermamnist)")
-    p.add_argument("--block", type=int, default=None, metavar="B",
-                   help="use the block-wise scheme with B x B blocks (adds config 'block2' for B=2)")
-    p.add_argument("--experiments", default=None,
-                   help="experiments directory holding ablation/variant_X "
-                        "(default: experiments/dermamnist, or experiments/dermamnist_block<B>)")
+    p.add_argument(
+        "--dataset-config",
+        default="dermamnist",
+        help="dataset config in configs/ (default: dermamnist)",
+    )
+    p.add_argument(
+        "--block",
+        type=int,
+        default=None,
+        metavar="B",
+        help="use the block-wise scheme with B x B blocks (adds config 'block2' for B=2)",
+    )
+    p.add_argument(
+        "--experiments",
+        default=None,
+        help="experiments directory holding ablation/variant_X "
+        "(default: experiments/dermamnist, or experiments/dermamnist_block<B>)",
+    )
     p.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
-    p.add_argument("--variant", default="D", choices=["B", "C", "D"],
-                   help="encrypted-image model used for the main prediction (default D)")
+    p.add_argument(
+        "--variant",
+        default="D",
+        choices=["B", "C", "D"],
+        help="encrypted-image model used for the main prediction (default D)",
+    )
     p.add_argument("--api-port", type=int, default=8000)
     p.add_argument("--ui-port", type=int, default=8501)
     p.add_argument("--no-browser", action="store_true")
@@ -65,12 +80,26 @@ def build_launch_plan(args: argparse.Namespace) -> Dict:
         "CRYPTOVIT_VARIANT": args.variant,
     }
     api = [sys.executable, "-m", "uvicorn", "api.main:app", "--port", str(args.api_port)]
-    ui = [sys.executable, "-m", "streamlit", "run", "dashboard/app.py",
-          "--server.port", str(args.ui_port), "--server.headless", "true",
-          "--browser.gatherUsageStats", "false"]
-    return {"env": env, "api": api, "ui": ui,
-            "ui_url": f"http://localhost:{args.ui_port}",
-            "api_url": f"http://127.0.0.1:{args.api_port}"}
+    ui = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        "dashboard/app.py",
+        "--server.port",
+        str(args.ui_port),
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
+    ]
+    return {
+        "env": env,
+        "api": api,
+        "ui": ui,
+        "ui_url": f"http://localhost:{args.ui_port}",
+        "api_url": f"http://127.0.0.1:{args.api_port}",
+    }
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -90,8 +119,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"\nNote: {exp_dir} does not exist yet; models will be untrained.")
 
     env = {**os.environ, **plan["env"]}
-    procs = [subprocess.Popen(plan["api"], cwd=PROJECT_ROOT, env=env),
-             subprocess.Popen(plan["ui"], cwd=PROJECT_ROOT, env=env)]
+    procs = [
+        subprocess.Popen(plan["api"], cwd=PROJECT_ROOT, env=env),
+        subprocess.Popen(plan["ui"], cwd=PROJECT_ROOT, env=env),
+    ]
     print(f"\nDashboard: {plan['ui_url']}   (API: {plan['api_url']})   Ctrl+C to stop")
     if not args.no_browser:
         time.sleep(4)

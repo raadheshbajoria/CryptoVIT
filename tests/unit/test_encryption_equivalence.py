@@ -45,9 +45,7 @@ def test_chain_xor_matches_sequential_reference(n):
     data = rng.integers(0, 256, n, dtype=np.uint8)
     key = rng.integers(0, 256, n, dtype=np.uint8)
     assert np.array_equal(_chain_xor(data, key), _chain_xor_reference(data, key))
-    assert np.array_equal(
-        _inverse_chain_xor(data, key), _inverse_chain_xor_reference(data, key)
-    )
+    assert np.array_equal(_inverse_chain_xor(data, key), _inverse_chain_xor_reference(data, key))
 
 
 @pytest.mark.parametrize("n", [1, 2, 17, 1024])

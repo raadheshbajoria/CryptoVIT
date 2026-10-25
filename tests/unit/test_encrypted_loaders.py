@@ -38,12 +38,19 @@ class FakeCifar(Dataset):
 
 @pytest.fixture(scope="module")
 def cfg():
-    return load_config(overrides=[
-        "dataset.image_size=32", "dataset.num_workers=0",
-        "dataset.pin_memory=false", "encryption.transient_steps=50",
-        "training.batch_size=8", "evaluation.batch_size=8",
-        "dataset.train_split=0.8", "model.image_size=32", "model.patch_size=8",
-    ])
+    return load_config(
+        overrides=[
+            "dataset.image_size=32",
+            "dataset.num_workers=0",
+            "dataset.pin_memory=false",
+            "encryption.transient_steps=50",
+            "training.batch_size=8",
+            "evaluation.batch_size=8",
+            "dataset.train_split=0.8",
+            "model.image_size=32",
+            "model.patch_size=8",
+        ]
+    )
 
 
 @pytest.fixture(scope="module")
@@ -103,8 +110,6 @@ def test_eval_transform_is_deterministic(loaders):
 def test_encrypted_stats_are_near_uniform_noise(cfg):
     base = FakeCifar(40, seed=3)
     stats = compute_encrypted_stats(base, "k", range(40), transient_steps=50)
-    # Plaintext here has mean well below 0.5 and small spread; ciphertext
-    # should be close to uniform: mean ~0.5, std ~0.289.
     assert all(0.44 < m < 0.56 for m in stats["mean"])
     assert all(0.25 < s < 0.33 for s in stats["std"])
 
@@ -117,10 +122,15 @@ def test_encrypted_transform_has_no_random_ops():
 
 def test_scheme_option_changes_the_encrypted_images():
     base_overrides = [
-        "dataset.image_size=32", "dataset.num_workers=0",
-        "dataset.pin_memory=false", "encryption.transient_steps=50",
-        "training.batch_size=8", "evaluation.batch_size=8",
-        "dataset.train_split=0.8", "model.image_size=32", "model.patch_size=8",
+        "dataset.image_size=32",
+        "dataset.num_workers=0",
+        "dataset.pin_memory=false",
+        "encryption.transient_steps=50",
+        "training.batch_size=8",
+        "evaluation.batch_size=8",
+        "dataset.train_split=0.8",
+        "model.image_size=32",
+        "model.patch_size=8",
     ]
     first = {}
     for scheme in ("v1", "v2"):

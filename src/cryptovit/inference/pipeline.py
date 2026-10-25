@@ -41,12 +41,12 @@ VARIANT_INFO: Dict[str, Dict] = {
     "A": {"label": "Plain ViT (plaintext image)", "encrypted": False},
     "B": {"label": "Plain ViT (encrypted image)", "encrypted": True},
     "C": {"label": "CryptoPatchEmbedding (encrypted image)", "encrypted": True},
-    "D": {"label": "CryptoViT: patch embedding + key-aware positions (encrypted image)",
-          "encrypted": True},
+    "D": {
+        "label": "CryptoViT: patch embedding + key-aware positions (encrypted image)",
+        "encrypted": True,
+    },
 }
 
-# Used only when the encrypted-image statistics cannot be computed: encrypted
-# pixels are close to uniform noise (mean 0.5, std 1/sqrt(12)).
 _UNIFORM_NOISE_STATS = {"mean": [0.5] * 3, "std": [0.2887] * 3}
 
 _CKPT_PATTERN = re.compile(r"checkpoint_epoch(\d+)_acc([0-9.]+)\.pt$")
@@ -62,10 +62,18 @@ def build_variant_model(name: str, cfg: DictConfig) -> nn.Module:
         raise ValueError(f"Unknown variant '{name}'. Choose from {list(VARIANT_INFO)}.")
     m = cfg.model
     common = dict(
-        image_size=m.image_size, patch_size=m.patch_size, in_channels=m.in_channels,
-        num_classes=m.num_classes, embed_dim=m.embed_dim, depth=m.depth,
-        num_heads=m.num_heads, mlp_ratio=m.mlp_ratio, dropout=m.dropout,
-        attn_dropout=m.attn_dropout, drop_path_rate=m.drop_path_rate, pool=m.pool,
+        image_size=m.image_size,
+        patch_size=m.patch_size,
+        in_channels=m.in_channels,
+        num_classes=m.num_classes,
+        embed_dim=m.embed_dim,
+        depth=m.depth,
+        num_heads=m.num_heads,
+        mlp_ratio=m.mlp_ratio,
+        dropout=m.dropout,
+        attn_dropout=m.attn_dropout,
+        drop_path_rate=m.drop_path_rate,
+        pool=m.pool,
     )
     if name in ("A", "B"):
         return VisionTransformer(**common)
@@ -139,10 +147,6 @@ class ClassifierService:
         self.trained: Dict[str, bool] = {}
         self._encrypted_stats: Optional[Dict] = None
 
-    # ------------------------------------------------------------------ #
-    # Loading                                                              #
-    # ------------------------------------------------------------------ #
-
     def load(self) -> None:
         """Load the best checkpoint of every variant that has one.
 
@@ -161,21 +165,25 @@ class ClassifierService:
                     model.load_state_dict(state["model_state_dict"])
                     logger.info("Variant %s: loaded %s", name, ckpt)
                 else:
-                    logger.warning("Variant %s: no checkpoint found, using an UNTRAINED model.", name)
+                    logger.warning(
+                        "Variant %s: no checkpoint found, using an UNTRAINED model.", name
+                    )
                 self.models[name] = model.to(self.device).eval()
                 self.trained[name] = ckpt is not None
-            except Exception as exc:  # keep the API alive if one variant fails
+            except Exception as exc:
                 logger.error("Variant %s failed to load: %s", name, exc)
 
     @property
     def class_names(self) -> List[str]:
         from cryptovit.datasets import get_class_names
+
         return get_class_names(self.cfg.dataset.name)
 
     @property
     def native_size(self) -> int:
         """Side length images are reduced to before encryption (as in training)."""
         from cryptovit.datasets.medmnist_dataset import is_medmnist
+
         if is_medmnist(self.cfg.dataset.name):
             return int(self.cfg.dataset.get("medmnist_size", 28))
         return 32
@@ -191,10 +199,6 @@ class ClassifierService:
             for name, info in VARIANT_INFO.items()
         }
 
-    # ------------------------------------------------------------------ #
-    # Preprocessing                                                        #
-    # ------------------------------------------------------------------ #
-
     def encrypted_stats(self) -> Dict[str, List[float]]:
         """Per-channel mean/std of encrypted training images (cached on disk).
 
@@ -209,8 +213,11 @@ class ClassifierService:
         cache = self.ablation_dir / "encrypted_stats.json"
         if cache.exists():
             data = json.loads(cache.read_text())
-            if (data.get("key_hash") == key_hash and data.get("scheme") == self.scheme
-                    and data.get("transient_steps") == self.transient_steps):
+            if (
+                data.get("key_hash") == key_hash
+                and data.get("scheme") == self.scheme
+                and data.get("transient_steps") == self.transient_steps
+            ):
                 self._encrypted_stats = {"mean": data["mean"], "std": data["std"]}
                 return self._encrypted_stats
 
@@ -225,8 +232,11 @@ class ClassifierService:
                     self.cfg.dataset.name, root, size=self.native_size, download=False
                 )[0]
                 stats = compute_encrypted_stats(
-                    train_base, self.train_key, range(len(train_base)),
-                    transient_steps=self.transient_steps, scheme=self.scheme,
+                    train_base,
+                    self.train_key,
+                    range(len(train_base)),
+                    transient_steps=self.transient_steps,
+                    scheme=self.scheme,
                 )
         except Exception as exc:
             logger.warning("Could not compute encrypted-image statistics (%s).", exc)
@@ -237,10 +247,17 @@ class ClassifierService:
         else:
             try:
                 self.ablation_dir.mkdir(parents=True, exist_ok=True)
-                cache.write_text(json.dumps({
-                    "key_hash": key_hash, "scheme": self.scheme,
-                    "transient_steps": self.transient_steps, **stats,
-                }, indent=2))
+                cache.write_text(
+                    json.dumps(
+                        {
+                            "key_hash": key_hash,
+                            "scheme": self.scheme,
+                            "transient_steps": self.transient_steps,
+                            **stats,
+                        },
+                        indent=2,
+                    )
+                )
             except OSError as exc:
                 logger.warning("Could not cache encrypted-image statistics: %s", exc)
         self._encrypted_stats = stats
@@ -248,11 +265,13 @@ class ClassifierService:
 
     def plaintext_stats(self) -> Dict[str, List[float]]:
         from cryptovit.datasets.cifar_dataset import _get_stats
+
         return _get_stats(self.cfg)
 
     def to_tensor(self, img_np: np.ndarray, encrypted: bool) -> torch.Tensor:
         """HWC uint8 -> (1, 3, S, S) normalised tensor, as in training."""
         from cryptovit.datasets.encrypted_dataset import build_encrypted_transform
+
         stats = self.encrypted_stats() if encrypted else self.plaintext_stats()
         transform = build_encrypted_transform(
             self.cfg.model.image_size, stats["mean"], stats["std"]
@@ -263,10 +282,6 @@ class ClassifierService:
         enc, _ = encrypt(img_np, key, self.transient_steps, scheme=self.scheme)
         return enc
 
-    # ------------------------------------------------------------------ #
-    # Prediction                                                           #
-    # ------------------------------------------------------------------ #
-
     @torch.no_grad()
     def _classify(self, variant: str, tensor: torch.Tensor, key: Optional[str]) -> Dict:
         if variant not in self.models:
@@ -275,9 +290,10 @@ class ClassifierService:
         tensor = tensor.to(self.device)
         if variant == "D":
             from cryptovit.models.positional_encoding import KeyAwarePositionalEncoding
-            key_emb = KeyAwarePositionalEncoding.key_to_embedding(
-                key or self.train_key
-            ).to(self.device)
+
+            key_emb = KeyAwarePositionalEncoding.key_to_embedding(key or self.train_key).to(
+                self.device
+            )
             logits = model(tensor, key_embedding=key_emb)
         else:
             logits = model(tensor)
@@ -302,7 +318,10 @@ class ClassifierService:
         return self._classify("A", self.to_tensor(img_np, encrypted=False), None)
 
     def predict_encrypted(
-        self, img_np: np.ndarray, key: str, variant: Optional[str] = None,
+        self,
+        img_np: np.ndarray,
+        key: str,
+        variant: Optional[str] = None,
         encrypt_first: bool = True,
     ) -> Dict:
         variant = variant or self.preferred_variant

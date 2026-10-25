@@ -6,18 +6,18 @@ Top-level encryption / decryption API.
 Pipeline (encrypt)
 ------------------
     image (H,W,C uint8)
-      → KeyGenerator(key)
-        → permute_image(image, perm_indices)          [Phase 3]
-          → diffuse(permuted, keystream, rule_seq)    [Phase 4]
-            → encrypted (H,W,C uint8)
+      -> KeyGenerator(key)
+        -> permute_image(image, perm_indices)          [Phase 3]
+          -> diffuse(permuted, keystream, rule_seq)    [Phase 4]
+            -> encrypted (H,W,C uint8)
 
 Pipeline (decrypt)
 ------------------
     encrypted (H,W,C uint8)
-      → KeyGenerator(key)
-        → inverse_diffuse(encrypted, keystream, rule_seq)   [Phase 4 undo]
-          → inverse_permute_image(undiffused, perm_indices) [Phase 3 undo]
-            → image (H,W,C uint8)
+      -> KeyGenerator(key)
+        -> inverse_diffuse(encrypted, keystream, rule_seq)   [Phase 4 undo]
+          -> inverse_permute_image(undiffused, perm_indices) [Phase 3 undo]
+            -> image (H,W,C uint8)
 
 The key generator is always reset before use so that encrypt and decrypt
 produce identical key-streams regardless of call order.
@@ -108,10 +108,12 @@ def _streams_for(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     n = image.shape[0] * image.shape[1]
     channels = 1 if image.ndim == 2 else image.shape[2]
-    # v1 streams do not depend on the channel count; keep one cache entry.
     return _key_streams(
-        _as_key_bytes(key), n, transient_steps,
-        channels if scheme == "v2" else 1, scheme,
+        _as_key_bytes(key),
+        n,
+        transient_steps,
+        channels if scheme == "v2" else 1,
+        scheme,
     )
 
 
@@ -144,9 +146,9 @@ def encrypt(
     -------
     encrypted : same shape and dtype as ``image``
     meta : dict with keys:
-        ``shape``     — original image shape
-        ``key_hash``  — SHA-256 of the key (for verification, not reconstruction)
-        ``scheme``    — the scheme used; ``decrypt`` reads it back
+        ``shape``     - original image shape
+        ``key_hash``  - SHA-256 of the key (for verification, not reconstruction)
+        ``scheme``    - the scheme used; ``decrypt`` reads it back
     """
     if image.dtype != np.uint8:
         raise TypeError(f"Image must be uint8; got {image.dtype}.")
@@ -166,10 +168,8 @@ def encrypt(
 
     perm, ks, rules = _streams_for(key_bytes, image, transient_steps, scheme)
 
-    # Phase 3: Permutation
     permuted = permute_image(image, perm)
 
-    # Phase 4: Diffusion
     encrypted = diffuse(permuted, ks, rules)
 
     meta = {
@@ -218,13 +218,10 @@ def decrypt(
     if block is not None:
         return block_decrypt(encrypted, _as_key_bytes(key), block, transient_steps)
 
-    # Same streams as encrypt (derived in the same fixed order, then cached)
     perm, ks, rules = _streams_for(key, encrypted, transient_steps, scheme)
 
-    # Undo diffusion
     undiffused = inverse_diffuse(encrypted, ks, rules)
 
-    # Undo permutation
     restored = inverse_permute_image(undiffused, perm)
 
     logger.debug("Decrypted image shape=%s", restored.shape)
@@ -247,7 +244,7 @@ def verify_roundtrip(
 
     Returns
     -------
-    bool — True if reconstruction is exact, False otherwise.
+    bool - True if reconstruction is exact, False otherwise.
     """
     encrypted, meta = encrypt(image, key, transient_steps, scheme)
     restored = decrypt(encrypted, key, meta, transient_steps)

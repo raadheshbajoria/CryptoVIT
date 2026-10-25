@@ -5,7 +5,7 @@ CIFAR-10 and CIFAR-100 dataset management for CryptoViT.
 
 Design principles
 -----------------
-* Pure PyTorch / torchvision — no Hugging Face dependency.
+* Pure PyTorch / torchvision - no Hugging Face dependency.
 * Deterministic train/val split derived from the fixed seed.
 * ``get_dataloaders`` is the single public entry point used by all
   training and evaluation scripts.
@@ -32,9 +32,6 @@ from torchvision import datasets, transforms
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Per-dataset normalisation statistics
-# ---------------------------------------------------------------------------
 _STATS: Dict[str, Dict[str, List[float]]] = {
     "cifar10": {
         "mean": [0.4914, 0.4822, 0.4465],
@@ -52,10 +49,6 @@ _TORCHVISION_CLS = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Transform factories
-# ---------------------------------------------------------------------------
-
 def build_train_transform(cfg: DictConfig) -> transforms.Compose:
     """Return the training-time augmentation pipeline.
 
@@ -70,41 +63,26 @@ def build_train_transform(cfg: DictConfig) -> transforms.Compose:
     """
     aug = cfg.dataset.augmentation
     img_size: int = cfg.dataset.image_size
-    dataset_name: str = cfg.dataset.name
-
     stats = _get_stats(cfg)
     pipeline: List = []
 
-    # 1. Resize to ViT input resolution
     pipeline.append(transforms.Resize((img_size, img_size)))
 
-    # 2. Optional random crop (with padding)
     if aug.random_crop:
-        pipeline.append(
-            transforms.RandomCrop(img_size, padding=aug.crop_padding)
-        )
+        pipeline.append(transforms.RandomCrop(img_size, padding=aug.crop_padding))
 
-    # 3. Optional horizontal flip
     if aug.random_horizontal_flip:
         pipeline.append(transforms.RandomHorizontalFlip())
 
-    # 4. Optional colour jitter
     if aug.color_jitter:
         s = aug.color_jitter_strength
-        pipeline.append(
-            transforms.ColorJitter(
-                brightness=s, contrast=s, saturation=s, hue=s * 0.5
-            )
-        )
+        pipeline.append(transforms.ColorJitter(brightness=s, contrast=s, saturation=s, hue=s * 0.5))
 
-    # 5. To tensor
     pipeline.append(transforms.ToTensor())
 
-    # 6. Optional random erasing (applied *after* ToTensor)
     if aug.random_erasing:
         pipeline.append(transforms.RandomErasing(p=0.25))
 
-    # 7. Normalise
     if aug.normalize:
         pipeline.append(transforms.Normalize(mean=stats["mean"], std=stats["std"]))
 
@@ -141,15 +119,10 @@ def _get_stats(cfg: DictConfig) -> Dict[str, List[float]]:
     """Return normalisation statistics, preferring config overrides."""
     dataset_name = cfg.dataset.name
     aug = cfg.dataset.augmentation
-    # Config-specified values take precedence
     if hasattr(aug, "mean") and aug.mean and hasattr(aug, "std") and aug.std:
         return {"mean": list(aug.mean), "std": list(aug.std)}
     return _STATS[dataset_name]
 
-
-# ---------------------------------------------------------------------------
-# Dataset loaders
-# ---------------------------------------------------------------------------
 
 def _load_raw_dataset(
     dataset_name: str,
@@ -161,8 +134,7 @@ def _load_raw_dataset(
     """Instantiate a torchvision CIFAR dataset."""
     if dataset_name not in _TORCHVISION_CLS:
         raise ValueError(
-            f"Unsupported dataset '{dataset_name}'. "
-            f"Choose from {list(_TORCHVISION_CLS)}."
+            f"Unsupported dataset '{dataset_name}'. Choose from {list(_TORCHVISION_CLS)}."
         )
     cls = _TORCHVISION_CLS[dataset_name]
     return cls(root=str(root), train=train, transform=transform, download=download)
@@ -187,9 +159,7 @@ def get_dataset_targets(dataset: Dataset) -> List[int]:
     )
 
 
-def get_split_indices(
-    n_total: int, train_split: float, seed: int
-) -> Tuple[List[int], List[int]]:
+def get_split_indices(n_total: int, train_split: float, seed: int) -> Tuple[List[int], List[int]]:
     """Deterministic train/validation index split of the official training set.
 
     Shared by the plaintext and encrypted pipelines so that every experiment
@@ -237,8 +207,8 @@ def get_dataloaders(
         get_medmnist_dataloaders,
         is_medmnist,
     )
+
     if is_medmnist(dataset_name):
-        # MedMNIST ships official train/val/test splits; no random re-split.
         return get_medmnist_dataloaders(cfg, data_root, download, seed)
 
     batch_train: int = cfg.training.batch_size
@@ -247,7 +217,6 @@ def get_dataloaders(
     pin_memory: bool = cfg.dataset.pin_memory
     train_split: float = cfg.dataset.train_split
 
-    # Resolve data root
     if data_root is None:
         data_root = Path(cfg.paths.project_root) / cfg.paths.raw_dir
     data_root = Path(data_root)
@@ -256,36 +225,30 @@ def get_dataloaders(
     train_transform = build_train_transform(cfg)
     eval_transform = build_eval_transform(cfg)
 
-    # --- Full training dataset (with augmentation) ---
     full_train: Dataset = _load_raw_dataset(
-        dataset_name, data_root, train=True,
-        transform=train_transform, download=download
+        dataset_name, data_root, train=True, transform=train_transform, download=download
     )
 
-    # --- Full training dataset (eval transform, used for val split) ---
     full_train_eval: Dataset = _load_raw_dataset(
-        dataset_name, data_root, train=True,
-        transform=eval_transform, download=False
+        dataset_name, data_root, train=True, transform=eval_transform, download=False
     )
 
-    # --- Test dataset ---
     test_dataset: Dataset = _load_raw_dataset(
-        dataset_name, data_root, train=False,
-        transform=eval_transform, download=False
+        dataset_name, data_root, train=False, transform=eval_transform, download=False
     )
 
-    # --- Deterministic train/val split ---
     train_indices, val_indices = get_split_indices(len(full_train), train_split, seed)
-    # Use the index lists to create Subsets on the *correct* transform datasets
     train_dataset = Subset(full_train, train_indices)
     val_dataset = Subset(full_train_eval, val_indices)
 
     logger.info(
         "Dataset '%s' | train=%d  val=%d  test=%d",
-        dataset_name, len(train_dataset), len(val_dataset), len(test_dataset)
+        dataset_name,
+        len(train_dataset),
+        len(val_dataset),
+        len(test_dataset),
     )
 
-    # --- DataLoaders ---
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_train,
@@ -313,10 +276,6 @@ def get_dataloaders(
 
     return train_loader, val_loader, test_loader
 
-
-# ---------------------------------------------------------------------------
-# Convenience: dataset statistics verification
-# ---------------------------------------------------------------------------
 
 def compute_dataset_stats(
     loader: DataLoader,
@@ -348,11 +307,11 @@ def compute_dataset_stats(
         b, c, h, w = images.shape
         pixels = b * h * w
         mean += images.sum(dim=(0, 2, 3))
-        var += (images ** 2).sum(dim=(0, 2, 3))
+        var += (images**2).sum(dim=(0, 2, 3))
         n_pixels += pixels
 
     mean /= n_pixels
-    std = ((var / n_pixels) - mean ** 2).sqrt()
+    std = ((var / n_pixels) - mean**2).sqrt()
 
     logger.info("Computed mean: %s", mean.tolist())
     logger.info("Computed std:  %s", std.tolist())
@@ -365,33 +324,124 @@ def get_class_names(dataset_name: str) -> List[str]:
         is_medmnist,
         medmnist_class_names,
     )
+
     if is_medmnist(dataset_name):
         return medmnist_class_names(dataset_name)
     if dataset_name == "cifar10":
         return [
-            "airplane", "automobile", "bird", "cat", "deer",
-            "dog", "frog", "horse", "ship", "truck",
+            "airplane",
+            "automobile",
+            "bird",
+            "cat",
+            "deer",
+            "dog",
+            "frog",
+            "horse",
+            "ship",
+            "truck",
         ]
     elif dataset_name == "cifar100":
-        # 100 fine-grained classes in alphabetical order as stored by torchvision
         return [
-            "apple", "aquarium_fish", "baby", "bear", "beaver", "bed", "bee",
-            "beetle", "bicycle", "bottle", "bowl", "boy", "bridge", "bus",
-            "butterfly", "camel", "can", "castle", "caterpillar", "cattle",
-            "chair", "chimpanzee", "clock", "cloud", "cockroach", "couch",
-            "crab", "crocodile", "cup", "dinosaur", "dolphin", "elephant",
-            "flatfish", "forest", "fox", "girl", "hamster", "house",
-            "kangaroo", "keyboard", "lamp", "lawn_mower", "leopard", "lion",
-            "lizard", "lobster", "man", "maple_tree", "motorcycle", "mountain",
-            "mouse", "mushroom", "oak_tree", "orange", "orchid", "otter",
-            "palm_tree", "pear", "pickup_truck", "pine_tree", "plain", "plate",
-            "poppy", "porcupine", "possum", "rabbit", "raccoon", "ray",
-            "road", "rocket", "rose", "sea", "seal", "shark", "shrew",
-            "skunk", "skyscraper", "snail", "snake", "spider", "squirrel",
-            "streetcar", "sunflower", "sweet_pepper", "table", "tank",
-            "telephone", "television", "tiger", "tractor", "train", "trout",
-            "tulip", "turtle", "wardrobe", "whale", "willow_tree", "wolf",
-            "woman", "worm",
+            "apple",
+            "aquarium_fish",
+            "baby",
+            "bear",
+            "beaver",
+            "bed",
+            "bee",
+            "beetle",
+            "bicycle",
+            "bottle",
+            "bowl",
+            "boy",
+            "bridge",
+            "bus",
+            "butterfly",
+            "camel",
+            "can",
+            "castle",
+            "caterpillar",
+            "cattle",
+            "chair",
+            "chimpanzee",
+            "clock",
+            "cloud",
+            "cockroach",
+            "couch",
+            "crab",
+            "crocodile",
+            "cup",
+            "dinosaur",
+            "dolphin",
+            "elephant",
+            "flatfish",
+            "forest",
+            "fox",
+            "girl",
+            "hamster",
+            "house",
+            "kangaroo",
+            "keyboard",
+            "lamp",
+            "lawn_mower",
+            "leopard",
+            "lion",
+            "lizard",
+            "lobster",
+            "man",
+            "maple_tree",
+            "motorcycle",
+            "mountain",
+            "mouse",
+            "mushroom",
+            "oak_tree",
+            "orange",
+            "orchid",
+            "otter",
+            "palm_tree",
+            "pear",
+            "pickup_truck",
+            "pine_tree",
+            "plain",
+            "plate",
+            "poppy",
+            "porcupine",
+            "possum",
+            "rabbit",
+            "raccoon",
+            "ray",
+            "road",
+            "rocket",
+            "rose",
+            "sea",
+            "seal",
+            "shark",
+            "shrew",
+            "skunk",
+            "skyscraper",
+            "snail",
+            "snake",
+            "spider",
+            "squirrel",
+            "streetcar",
+            "sunflower",
+            "sweet_pepper",
+            "table",
+            "tank",
+            "telephone",
+            "television",
+            "tiger",
+            "tractor",
+            "train",
+            "trout",
+            "tulip",
+            "turtle",
+            "wardrobe",
+            "whale",
+            "willow_tree",
+            "wolf",
+            "woman",
+            "worm",
         ]
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")

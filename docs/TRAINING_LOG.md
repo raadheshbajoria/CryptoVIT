@@ -6,7 +6,7 @@ Everything listed here was actually done; numbers are copied from real command o
 ## Summary (read this first)
 
 **State at 06:35 on 2026-10-25.** Everything you asked for is finished and pushed to the `ananjan` branch of
-`raadheshbajoria/CryptoVIT`; the live demo is running on your laptop (see "Run the demo"). 311 unit tests pass.
+`raadheshbajoria/CryptoVIT`; the live demo is running on your laptop (see "Run the demo"). 292 unit tests pass after the 08:xx cleanup (311 before it).
 
 ### What was built
 * A medical version of the project on **DermaMNIST** (7 skin-lesion classes): data loading with the official splits,
@@ -41,9 +41,9 @@ Everything listed here was actually done; numbers are copied from real command o
 | What | Link |
 |---|---|
 | Repository | https://github.com/raadheshbajoria/CryptoVIT/tree/ananjan |
-| Results table (every row) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/RESULTS.md |
-| Security measurements | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/SECURITY.md |
-| Review guide (talk track, demo script, Q&A) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/presentation/REVIEW_GUIDE.md |
+| Results table (every row) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/docs/RESULTS.md |
+| Security measurements | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/docs/SECURITY.md |
+| Review guide (talk track, demo script, Q&A) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/docs/REVIEW_GUIDE.md |
 | Live-demo image 1: melanoma (28x28) | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/demo_images/1_safe_melanoma_test846.png |
 | Live-demo image 2: benign nevus | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/demo_images/2_safe_melanocytic_nevi_test30.png |
 | Live-demo image 3: basal cell carcinoma | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/demo_images/3_safe_basal_cell_carcinoma_test436.png |
@@ -54,15 +54,13 @@ Everything listed here was actually done; numbers are copied from real command o
 | Slide picture, failure case | https://raw.githubusercontent.com/raadheshbajoria/CryptoVIT/ananjan/presentation/failure_basal_cell_carcinoma_test1214_side_by_side.png |
 
 All links were checked to open without logging in. Download the four demo images and the strips beforehand; they are also in
-your project folders `demo_images/` and `presentation/` (the first of which feeds the dashboard dropdown).
+your project folders `demo_images/` (sample images to upload in the dashboard) and `presentation/`.
 
 ### Run the demo
 ```
 python scripts/start_demo.py --block 2
 ```
-It is already running now (dashboard http://localhost:8501, API http://127.0.0.1:8000, block-scheme models). In the sidebar
-pick `1_safe_melanoma_test846`. For this image all four models say melanoma (A 62%, B 57%, C 50%, D 65%). The failure
-case is last in the dropdown on purpose.
+It is already running now (dashboard http://localhost:8501, API http://127.0.0.1:8000, block-scheme models). Upload `demo_images/1_safe_melanoma_test846.png` in the dashboard. For this image all four models say melanoma (A 62%, B 57%, C 50%, D 65%). The failure case file is `9_failure_basal_cell_carcinoma_test1214.png`.
 
 ### On your machine now
 * **Sleep:** you set "sleep when plugged in" to Never for the night; set it back if you want.
@@ -192,3 +190,18 @@ needed; Phase 2 ideas are in the review guide. Research prototype; not a medical
 | 06:31 | Stopped the emergency-pause watchdog (PID 44220) and the 9-hour keep-awake helper (PID 11972): nothing is training any more. No emergency latch file exists (the 90 C pause never triggered). |
 | 06:32 | Rewrote this log for review: exact times taken from result-file timestamps and commit times (several earlier entries had the time I noticed an event, not when it happened), every part is now one table, plain ASCII, and a summary with final results, links and cleanup notes is at the top. |
 | 08:06 | You asked to see the demo running. Opened the live dashboard in the browser pane and used it: melanoma demo image -> CryptoViT D predicts melanoma 65.0% from the block-encrypted image; correct key -> 'Exactly identical to the original image'; wrong key -> not recovered. **Found a wording error of mine:** with the block scheme a wrong key produces a *scrambled mosaic of the same colours*, not noise as the dashboard, README and review guide said; the texts now say 'scrambled' (dashboard messages, API docstring, README, review guide). |
+
+## Part 5 - Repository cleanup (08:13 onwards)
+
+| Time | What happened |
+|---|---|
+| 08:13 | You asked to remove the demo-image dashboard, the unnecessary tests and all comments, and to make the folder look like a production repository. I read "demo-image dashboard" as **the demo-image dropdown** (the dashboard itself stays, you upload an image instead; the sample PNGs stay in `demo_images/` so your download links keep working). Restore point: git tag `pre-cleanup` (pushed), so every step can be undone. |
+| 08:20 | Dashboard: removed the demo-image dropdown and its folder logic; the page now just asks for an upload. |
+| 08:25 | Removed about 734 `#` comments from 59 Python files with a tokenizer-based script. Safety proof: the syntax tree of every file is identical before and after. Docstrings and the explanations inside the YAML configs were kept (I did not read "comments" as including those). |
+| 08:30 | Removed obsolete files: scripts `phase1_dataset_check`, `generate_encrypted_data`, `train_baseline`, `download_cifar` (the first two and the last were CIFAR-era helpers; `train_baseline` duplicated variant A of `run_ablation` and ignored the class-weight settings), `configs/experiment_phase1.yaml`, `utils/visualization.py` (only used by the removed phase-1 script) with its test, the CIFAR phase-1 integration test and the duplicate CIFAR smoke test. |
+| 08:33 | Removed 19 tests: style checks ("output is plain ASCII"), slow Windows-only tests that freeze real processes (the deterministic logic tests for the thermal guard and emergency pause stay), and the dashboard flow test that depended on the dropdown (the dashboard tests were rewritten around the page, the results placeholder and the results table with its horizontal chart; Streamlit's test harness cannot upload files). Integration-test hooks removed from `conftest.py`. **Tests: 311 -> 292; run time 39 s -> 17.5 s.** |
+| 08:38 | Added `ruff` (lint: E, F, I, B; plus formatter) configured in `pyproject.toml`: 66 findings fixed (27 automatic; by hand: removed the `sys.path` hacks because the package is installed, `raise ... from e`, unused variables, import order, `PROJECT_ROOT` placement). **A regression of mine:** my automatic `raise ... from e` fix was too broad and broke the `/results` endpoint; the tests caught it at once and I corrected the three places. `ruff check` and `ruff format --check` now pass. |
+| 08:40 | Packaging: one `pyproject.toml` (pytest and ruff settings), removed `setup.cfg` and `pytest.ini`, removed unused dependencies (`matplotlib`, `timm`, `rich`), declared what the code really imports (dashboard: `requests`, `pandas`, `altair`; dev: `httpx`, `ruff`), `requires-python >= 3.10`, version 0.2.0. |
+| 08:43 | Layout: `TRAINING_LOG.md`, `RESULTS.md`, `SECURITY.md` and `REVIEW_GUIDE.md` moved into `docs/` (the report tools now write there); CI workflow `.github/workflows/ci.yml` (lint and tests on Linux and Windows, Python 3.10 and 3.12); `.gitignore` simplified (`data/`, `experiments/`); typographic characters in the sources normalised to ASCII and a stray byte-order mark removed; README rewritten in a standard layout (installation, usage, configuration, development, structure, documentation index, limitations). `demo_images/` and `presentation/` were **not** moved so the image links I gave you still work. |
+| 08:46 | Restarted the demo on the cleaned code (launcher PID 39396) and checked it over HTTP with the melanoma sample: **predictions identical to before the cleanup** (A 62.1%, B 56.5%, C 49.5%, D 65.0%), the right key restores the image exactly, a wrong key does not, `/results` returns 4 rows, dashboard answers on port 8501. |
+| not verified | The CI workflow has not run on GitHub yet (it cannot be tested locally), and only Python 3.11 was tested here, not 3.10 or 3.12. No `LICENSE` file was added: choosing a licence is your decision. |

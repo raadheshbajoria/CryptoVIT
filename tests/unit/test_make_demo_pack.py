@@ -22,17 +22,23 @@ def _load():
 
 
 def rec(index, label, plain_pred, plain_conf, enc_pred, enc_conf):
-    return dict(index=index, label=label, plain_pred=plain_pred, plain_conf=plain_conf,
-                enc_pred=enc_pred, enc_conf=enc_conf)
+    return dict(
+        index=index,
+        label=label,
+        plain_pred=plain_pred,
+        plain_conf=plain_conf,
+        enc_pred=enc_pred,
+        enc_conf=enc_conf,
+    )
 
 
 def test_picks_the_image_both_models_get_right_with_best_lowest_confidence():
     mod = _load()
     records = [
-        rec(1, "melanoma", "melanoma", 0.9, "melanoma", 0.4),     # min 0.4
-        rec(2, "melanoma", "melanoma", 0.7, "melanoma", 0.6),     # min 0.6  <- best
-        rec(3, "melanoma", "melanoma", 0.95, "nevus", 0.9),       # encrypted wrong
-        rec(4, "melanoma", "nevus", 0.9, "melanoma", 0.9),        # plaintext wrong
+        rec(1, "melanoma", "melanoma", 0.9, "melanoma", 0.4),
+        rec(2, "melanoma", "melanoma", 0.7, "melanoma", 0.6),
+        rec(3, "melanoma", "melanoma", 0.95, "nevus", 0.9),
+        rec(4, "melanoma", "nevus", 0.9, "melanoma", 0.9),
     ]
     out = mod.choose_images(records, ["melanoma"])
     assert out["safe"]["melanoma"]["index"] == 2
@@ -50,13 +56,17 @@ def test_failure_is_plaintext_right_encrypted_wrong_most_confident_mistake():
     mod = _load()
     records = [
         rec(1, "melanoma", "melanoma", 0.9, "nevus", 0.5),
-        rec(2, "melanoma", "melanoma", 0.8, "nevus", 0.8),        # <- most visible mistake
-        rec(3, "melanoma", "nevus", 0.9, "nevus", 0.99),          # plaintext also wrong
-        rec(4, "other", "other", 0.9, "nevus", 0.99),             # class not requested
+        rec(2, "melanoma", "melanoma", 0.8, "nevus", 0.8),
+        rec(3, "melanoma", "nevus", 0.9, "nevus", 0.99),
+        rec(4, "other", "other", 0.9, "nevus", 0.99),
     ]
     assert mod.choose_images(records, ["melanoma"])["failure"]["index"] == 2
-    assert mod.choose_images([rec(1, "melanoma", "melanoma", 0.9, "melanoma", 0.9)],
-                             ["melanoma"])["failure"] is None
+    assert (
+        mod.choose_images([rec(1, "melanoma", "melanoma", 0.9, "melanoma", 0.9)], ["melanoma"])[
+            "failure"
+        ]
+        is None
+    )
 
 
 def test_demo_filenames_sort_safe_images_first_and_failure_last():
@@ -68,7 +78,7 @@ def test_demo_filenames_sort_safe_images_first_and_failure_last():
         mod.demo_filename("failure_bcc_test4", "failure", 4),
     ]
     assert names[-1].startswith("9_failure")
-    assert sorted(names) == names                     # the dropdown sorts alphabetically
+    assert sorted(names) == names
 
 
 def test_slug():
@@ -93,12 +103,3 @@ def test_triptych_layout_and_validation():
     assert strip.height > 224 + 28
     with pytest.raises(ValueError):
         mod.triptych(panels, ["only one"])
-
-
-def test_selection_markdown_is_plain_ascii(tmp_path):
-    mod = _load()
-    rows = [dict(rec(5, "melanoma", "melanoma", 0.8, "melanoma", 0.7),
-                 role="safe", file_stem="safe_melanoma_test5")]
-    mod.write_selection_md(rows, tmp_path, "D", 2, 90)
-    text = (tmp_path / "SELECTION.md").read_text(encoding="utf-8")
-    assert "safe_melanoma_test5" in text and text.isascii()

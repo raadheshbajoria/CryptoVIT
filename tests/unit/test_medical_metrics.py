@@ -42,13 +42,14 @@ class TestEvaluateModelMedicalMetrics:
     @pytest.fixture
     def results(self):
         return evaluate_model(
-            Identity(), _loader(_logits_for(self.preds, 3), self.labels),
-            torch.device("cpu"), num_classes=3,
+            Identity(),
+            _loader(_logits_for(self.preds, 3), self.labels),
+            torch.device("cpu"),
+            num_classes=3,
         )
 
     def test_accuracy_and_balanced_accuracy(self, results):
         assert results["accuracy"] == pytest.approx(4 / 6)
-        # recalls: 1/2, 2/2, 1/2
         assert results["balanced_accuracy"] == pytest.approx((0.5 + 1.0 + 0.5) / 3)
 
     def test_per_class_sensitivity_is_recall(self, results):
@@ -56,7 +57,6 @@ class TestEvaluateModelMedicalMetrics:
         assert results["per_class_sensitivity"] == results["per_class_recall"]
 
     def test_per_class_specificity(self, results):
-        # class 0: 1 false positive among 4 negatives; class 1: same; class 2: none
         assert results["per_class_specificity"] == pytest.approx([0.75, 0.75, 1.0])
 
     def test_support(self, results):
@@ -66,15 +66,17 @@ class TestEvaluateModelMedicalMetrics:
         rng = np.random.default_rng(0)
         labels = rng.integers(0, 2, 60)
         scores = torch.tensor(rng.normal(size=(60, 2)), dtype=torch.float32)
-        res = evaluate_model(Identity(), _loader(scores, labels.tolist()),
-                             torch.device("cpu"), num_classes=2)
+        res = evaluate_model(
+            Identity(), _loader(scores, labels.tolist()), torch.device("cpu"), num_classes=2
+        )
         probs = torch.softmax(scores, dim=1).numpy()
         assert res["auc_macro_ovr"] == pytest.approx(roc_auc_score(labels, probs[:, 1]))
 
     def test_missing_class_has_no_auc_but_others_do(self):
-        labels = [0, 1, 0, 1]            # class 2 never occurs
-        res = evaluate_model(Identity(), _loader(_logits_for(labels, 3), labels),
-                             torch.device("cpu"), num_classes=3)
+        labels = [0, 1, 0, 1]
+        res = evaluate_model(
+            Identity(), _loader(_logits_for(labels, 3), labels), torch.device("cpu"), num_classes=3
+        )
         assert res["per_class_auc"][2] is None
         assert res["per_class_auc"][0] == pytest.approx(1.0)
         assert res["auc_macro_ovr"] == pytest.approx(1.0)
@@ -82,6 +84,7 @@ class TestEvaluateModelMedicalMetrics:
 
     def test_results_are_json_serialisable(self, results):
         import json
+
         json.dumps(results)
 
 
@@ -110,13 +113,22 @@ class TestClassWeights:
     def test_get_dataset_targets_unwraps_subset_and_wrappers(self):
         class Base(Dataset):
             targets = [3, 1, 2, 0]
-            def __len__(self): return 4
-            def __getitem__(self, i): return 0, self.targets[i]
+
+            def __len__(self):
+                return 4
+
+            def __getitem__(self, i):
+                return 0, self.targets[i]
 
         class Wrapper(Dataset):
-            def __init__(self): self.base_dataset = Base()
-            def __len__(self): return 4
-            def __getitem__(self, i): return self.base_dataset[i]
+            def __init__(self):
+                self.base_dataset = Base()
+
+            def __len__(self):
+                return 4
+
+            def __getitem__(self, i):
+                return self.base_dataset[i]
 
         assert get_dataset_targets(Base()) == [3, 1, 2, 0]
         assert get_dataset_targets(Subset(Wrapper(), [3, 0])) == [0, 3]
@@ -125,23 +137,34 @@ class TestClassWeights:
 
 
 def _cfg(select_metric="accuracy"):
-    return OmegaConf.create({
-        "training": {
-            "epochs": 2, "batch_size": 4, "accumulation_steps": 1,
-            "mixed_precision": False, "learning_rate": 1e-2, "weight_decay": 0.01,
-            "betas": [0.9, 0.999], "warmup_epochs": 0, "min_lr": 1e-5,
-            "label_smoothing": 0.0, "clip_grad_norm": 1.0,
-            "save_every_n_epochs": 100, "keep_best_k": 2,
-            "early_stopping_patience": 100, "select_metric": select_metric,
-        },
-        "logging": {"use_tensorboard": False},
-    })
+    return OmegaConf.create(
+        {
+            "training": {
+                "epochs": 2,
+                "batch_size": 4,
+                "accumulation_steps": 1,
+                "mixed_precision": False,
+                "learning_rate": 1e-2,
+                "weight_decay": 0.01,
+                "betas": [0.9, 0.999],
+                "warmup_epochs": 0,
+                "min_lr": 1e-5,
+                "label_smoothing": 0.0,
+                "clip_grad_norm": 1.0,
+                "save_every_n_epochs": 100,
+                "keep_best_k": 2,
+                "early_stopping_patience": 100,
+                "select_metric": select_metric,
+            },
+            "logging": {"use_tensorboard": False},
+        }
+    )
 
 
 def _data():
     g = torch.Generator().manual_seed(0)
     x = torch.randn(16, 3, 4, 4, generator=g)
-    y = torch.tensor([0] * 12 + [1] * 4)        # imbalanced 3:1
+    y = torch.tensor([0] * 12 + [1] * 4)
     return DataLoader(TensorDataset(x, y), batch_size=4)
 
 

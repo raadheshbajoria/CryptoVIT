@@ -13,7 +13,6 @@ import pytest
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
 
 from cryptovit.datasets import build_encrypted_loaders
 from cryptovit.datasets.cifar_dataset import build_eval_transform, build_train_transform
@@ -50,17 +49,29 @@ def _load_run_ablation():
 
 @pytest.fixture(scope="module")
 def cfg():
-    return load_config(overrides=[
-        "config=dermamnist",
-        "dataset.image_size=32", "dataset.num_workers=0", "dataset.pin_memory=false",
-        "model.image_size=32", "model.patch_size=8",
-        "model.embed_dim=16", "model.depth=1", "model.num_heads=2",
-        "model.dropout=0.0", "model.drop_path_rate=0.0",
-        "training.epochs=1", "training.batch_size=8", "training.warmup_epochs=0",
-        "training.mixed_precision=false", "training.save_every_n_epochs=100",
-        "evaluation.batch_size=8", "encryption.transient_steps=50",
-        "hardware.device=cpu",
-    ])
+    return load_config(
+        overrides=[
+            "config=dermamnist",
+            "dataset.image_size=32",
+            "dataset.num_workers=0",
+            "dataset.pin_memory=false",
+            "model.image_size=32",
+            "model.patch_size=8",
+            "model.embed_dim=16",
+            "model.depth=1",
+            "model.num_heads=2",
+            "model.dropout=0.0",
+            "model.drop_path_rate=0.0",
+            "training.epochs=1",
+            "training.batch_size=8",
+            "training.warmup_epochs=0",
+            "training.mixed_precision=false",
+            "training.save_every_n_epochs=100",
+            "evaluation.batch_size=8",
+            "encryption.transient_steps=50",
+            "hardware.device=cpu",
+        ]
+    )
 
 
 def test_dermamnist_config_values(cfg):
@@ -88,14 +99,15 @@ def _encrypted_loaders(cfg):
         cfg,
         MedMNISTAdapter(FakeMedMNIST(64, 1)),
         MedMNISTAdapter(FakeMedMNIST(24, 3)),
-        "smoke-key", seed=cfg.project.seed,
+        "smoke-key",
+        seed=cfg.project.seed,
         base_val=MedMNISTAdapter(FakeMedMNIST(24, 2)),
     )
 
 
 def test_encrypted_loaders_use_the_official_splits(cfg):
     train_l, val_l, test_l = _encrypted_loaders(cfg)
-    assert len(train_l.dataset) == 64          # whole train split, no re-split
+    assert len(train_l.dataset) == 64
     assert len(val_l.dataset) == 24
     assert len(test_l.dataset) == 24
     assert val_l.dataset is not test_l.dataset

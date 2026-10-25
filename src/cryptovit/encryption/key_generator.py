@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 class KeyGenerator:
     """Derives all encryption sub-keys from a single master key.
 
-    Two independent ``HyperchaosSystem`` instances are created —
-    one for permutation and one for diffusion — using slightly different
+    Two independent ``HyperchaosSystem`` instances are created -
+    one for permutation and one for diffusion - using slightly different
     key derivations to ensure independence.
 
     Parameters
@@ -48,19 +48,13 @@ class KeyGenerator:
             key = key.encode("utf-8")
         self._master_key = key
 
-        # Permutation system: key is SHA-256(key + b"perm")
         perm_key = hashlib.sha256(key + b"perm").digest()
         self._perm_sys = HyperchaosSystem(perm_key, transient_steps=transient_steps)
 
-        # Diffusion system: key is SHA-256(key + b"diff")
         diff_key = hashlib.sha256(key + b"diff").digest()
         self._diff_sys = HyperchaosSystem(diff_key, transient_steps=transient_steps)
 
         logger.debug("KeyGenerator initialised.")
-
-    # ------------------------------------------------------------------
-    # Permutation
-    # ------------------------------------------------------------------
 
     def pixel_permutation(self, n: int) -> np.ndarray:
         """Return a permutation of [0, n) for pixel-level scrambling.
@@ -73,7 +67,7 @@ class KeyGenerator:
 
         Returns
         -------
-        (n,) int64 array — permutation of [0, n)
+        (n,) int64 array - permutation of [0, n)
         """
         return self._perm_sys.generate_indices(n)
 
@@ -87,29 +81,23 @@ class KeyGenerator:
         -------
         (channels, n) int64 array
         """
-        return np.stack(
-            [self._perm_sys.generate_permutation(n) for _ in range(channels)]
-        )
+        return np.stack([self._perm_sys.generate_permutation(n) for _ in range(channels)])
 
     def inverse_permutation(self, perm: np.ndarray) -> np.ndarray:
         """Return the inverse of a permutation array.
 
         Parameters
         ----------
-        perm : (n,) array — a permutation of [0, n)
+        perm : (n,) array - a permutation of [0, n)
 
         Returns
         -------
-        inv_perm : (n,) array — inverse permutation such that
+        inv_perm : (n,) array - inverse permutation such that
                    inv_perm[perm[i]] == i for all i
         """
         inv = np.empty_like(perm)
         inv[perm] = np.arange(len(perm), dtype=perm.dtype)
         return inv
-
-    # ------------------------------------------------------------------
-    # Diffusion
-    # ------------------------------------------------------------------
 
     def diffusion_keystream(self, n: int) -> np.ndarray:
         """Return a uint8 key-stream for XOR / DNA diffusion.
@@ -130,11 +118,9 @@ class KeyGenerator:
 
         Returns
         -------
-        (n, channels) uint8 array — column ``c`` is the key-stream of channel c
+        (n, channels) uint8 array - column ``c`` is the key-stream of channel c
         """
-        return np.stack(
-            [self._diff_sys.generate_bytes(n) for _ in range(channels)], axis=1
-        )
+        return np.stack([self._diff_sys.generate_bytes(n) for _ in range(channels)], axis=1)
 
     def dna_rule_sequence(self, n: int) -> np.ndarray:
         """Return a sequence of DNA rule indices in [0, 7].
@@ -149,12 +135,7 @@ class KeyGenerator:
         (n,) uint8 array with values in [0, 7]
         """
         raw = self._diff_sys.generate(n)
-        # Map to [0, 7] via modular arithmetic on absolute value
         return ((np.abs(raw) * 1000).astype(np.uint64) % 8).astype(np.uint8)
-
-    # ------------------------------------------------------------------
-    # Reset
-    # ------------------------------------------------------------------
 
     def reset(self) -> None:
         """Reset both chaotic systems to initial state (re-derive from master key)."""

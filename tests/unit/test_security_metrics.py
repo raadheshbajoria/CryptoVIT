@@ -24,7 +24,6 @@ from cryptovit.evaluation.security_metrics import (
 class TestSecurityMetrics:
     def test_compute_entropy_uniform_random(self):
         rng = np.random.default_rng(42)
-        # Random uint8 image should have high entropy (close to 8.0)
         img = rng.integers(0, 256, (64, 64, 3), dtype=np.uint8)
         ent = compute_entropy(img)
         assert "overall" in ent
@@ -32,7 +31,6 @@ class TestSecurityMetrics:
         assert ent["overall"] > 7.0
 
     def test_compute_entropy_flat_image(self):
-        # Image with single value has zero entropy
         flat = np.zeros((32, 32, 3), dtype=np.uint8)
         ent = compute_entropy(flat)
         assert ent["overall"] == 0.0

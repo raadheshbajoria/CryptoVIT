@@ -31,10 +31,6 @@ from typing import List, Optional, Set
 logger = logging.getLogger("thermal_guard")
 
 
-# ---------------------------------------------------------------------------
-# Decision logic (pure, unit-tested)
-# ---------------------------------------------------------------------------
-
 def paced_pause(elapsed: float, duty: float, cycle: float) -> bool:
     """True during the paused part of a duty cycle.
 
@@ -71,21 +67,22 @@ class ThermalGovernor:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Windows process helpers
-# ---------------------------------------------------------------------------
-
 _TH32CS_SNAPPROCESS = 0x2
 _PROCESS_SUSPEND_RESUME = 0x0800
 
 
 class _PROCESSENTRY32(ctypes.Structure):
     _fields_ = [
-        ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
-        ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_void_p),
-        ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
-        ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
-        ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_char * 260),
+        ("dwSize", wintypes.DWORD),
+        ("cntUsage", wintypes.DWORD),
+        ("th32ProcessID", wintypes.DWORD),
+        ("th32DefaultHeapID", ctypes.c_void_p),
+        ("th32ModuleID", wintypes.DWORD),
+        ("cntThreads", wintypes.DWORD),
+        ("th32ParentProcessID", wintypes.DWORD),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", wintypes.DWORD),
+        ("szExeFile", ctypes.c_char * 260),
     ]
 
 
@@ -137,13 +134,13 @@ def resume_tree(root_pid: int, remembered: Set[int]) -> Set[int]:
 
 def process_alive(pid: int) -> bool:
     kernel32 = ctypes.windll.kernel32
-    handle = kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+    handle = kernel32.OpenProcess(0x1000, False, pid)
     if not handle:
         return False
     code = wintypes.DWORD()
     kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
     kernel32.CloseHandle(handle)
-    return code.value == 259   # STILL_ACTIVE
+    return code.value == 259
 
 
 def gpu_temperature() -> Optional[float]:
@@ -151,26 +148,32 @@ def gpu_temperature() -> Optional[float]:
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=15, check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=True,
         ).stdout
         return max(float(line) for line in out.split() if line.strip())
     except (subprocess.SubprocessError, ValueError, OSError):
         return None
 
 
-# ---------------------------------------------------------------------------
-# Main loop
-# ---------------------------------------------------------------------------
-
-def run(pid: int, high: float, low: float, interval: float,
-        duty: float = 1.0, cycle: float = 60.0, latch: Optional[Path] = None) -> int:
+def run(
+    pid: int,
+    high: float,
+    low: float,
+    interval: float,
+    duty: float = 1.0,
+    cycle: float = 60.0,
+    latch: Optional[Path] = None,
+) -> int:
     """Guard ``pid``: temperature rule (high/low) plus optional duty-cycle pacing.
 
     The job is frozen whenever *either* the temperature rule or the pacing
     cycle asks for it. Pacing pauses are not logged one by one (there would be
     hundreds); a summary line is written every 10 minutes instead.
     """
-    paced_pause(0.0, duty, cycle)          # validate the arguments early
+    paced_pause(0.0, duty, cycle)
     governor = ThermalGovernor(high, low)
     suspended_pids: Set[int] = set()
     frozen = False
@@ -180,11 +183,14 @@ def run(pid: int, high: float, low: float, interval: float,
     start = last_report = time.time()
     temp: Optional[float] = None
 
-    logger.info("Watching PID %d: suspend at >= %.0f C, resume at <= %.0f C, "
-                "duty %.0f%% per %.0f s cycle", pid, high, low, duty * 100, cycle)
-    # If an earlier guard was killed while the job was frozen, start it again --
-    # unless an emergency pause is active (its latch file exists): that freeze
-    # must only be lifted by a person, so do not touch the job then.
+    logger.info(
+        "Watching PID %d: suspend at >= %.0f C, resume at <= %.0f C, duty %.0f%% per %.0f s cycle",
+        pid,
+        high,
+        low,
+        duty * 100,
+        cycle,
+    )
     if latch is not None and Path(latch).exists():
         logger.warning("Emergency latch %s exists: leaving the job as it is.", latch)
     else:
@@ -209,8 +215,12 @@ def run(pid: int, high: float, low: float, interval: float,
                 action = governor.update(temp)
                 if action == "suspend":
                     thermal_pauses += 1
-                    logger.info("%.0f C reached: thermal pause #%d (until %.0f C)",
-                                temp, thermal_pauses, low)
+                    logger.info(
+                        "%.0f C reached: thermal pause #%d (until %.0f C)",
+                        temp,
+                        thermal_pauses,
+                        low,
+                    )
                 elif action == "resume":
                     logger.info("%.0f C: cooled to the resume temperature", temp)
 
@@ -219,16 +229,20 @@ def run(pid: int, high: float, low: float, interval: float,
 
             if now - last_report >= 600:
                 held = total_frozen + (now - frozen_since if frozen else 0.0)
-                logger.info("Status: GPU %s C | frozen %.0f%% of the last %.0f min "
-                            "(thermal pauses so far: %d)",
-                            "?" if temp is None else f"{temp:.0f}",
-                            100 * held / (now - start), (now - start) / 60, thermal_pauses)
+                logger.info(
+                    "Status: GPU %s C | frozen %.0f%% of the last %.0f min "
+                    "(thermal pauses so far: %d)",
+                    "?" if temp is None else f"{temp:.0f}",
+                    100 * held / (now - start),
+                    (now - start) / 60,
+                    thermal_pauses,
+                )
                 last_report = now
             time.sleep(interval)
     except KeyboardInterrupt:
         pass
     finally:
-        if frozen:     # never leave the job frozen when the guard stops
+        if frozen:
             resume_tree(pid, suspended_pids)
             logger.info("Guard stopping: resumed the job.")
     logger.info("Job has ended (thermal pauses: %d). Guard exiting.", thermal_pauses)
@@ -241,23 +255,42 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--high", type=float, default=80.0, help="suspend at this temperature (C)")
     p.add_argument("--low", type=float, default=70.0, help="resume at or below this (C)")
     p.add_argument("--interval", type=float, default=10.0, help="seconds between readings")
-    p.add_argument("--duty", type=float, default=1.0,
-                   help="share of time the job may run, e.g. 0.7 (default 1.0 = no pacing)")
-    p.add_argument("--cycle", type=float, default=60.0,
-                   help="length of one duty cycle in seconds (default 60)")
+    p.add_argument(
+        "--duty",
+        type=float,
+        default=1.0,
+        help="share of time the job may run, e.g. 0.7 (default 1.0 = no pacing)",
+    )
+    p.add_argument(
+        "--cycle", type=float, default=60.0, help="length of one duty cycle in seconds (default 60)"
+    )
     p.add_argument("--log", default=None, help="also write the log to this file")
-    p.add_argument("--latch", default="experiments/EMERGENCY_PAUSE.txt",
-                   help="emergency-pause latch file (see emergency_pause.py)")
+    p.add_argument(
+        "--latch",
+        default="experiments/EMERGENCY_PAUSE.txt",
+        help="emergency-pause latch file (see emergency_pause.py)",
+    )
     args = p.parse_args(argv)
 
     handlers = [logging.StreamHandler(sys.stdout)]
     if args.log:
         Path(args.log).parent.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(args.log, encoding="utf-8"))
-    logging.basicConfig(level=logging.INFO, handlers=handlers,
-                        format="%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    return run(args.pid, args.high, args.low, args.interval, args.duty, args.cycle,
-               Path(args.latch) if args.latch else None)
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=handlers,
+        format="%(asctime)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    return run(
+        args.pid,
+        args.high,
+        args.low,
+        args.interval,
+        args.duty,
+        args.cycle,
+        Path(args.latch) if args.latch else None,
+    )
 
 
 if __name__ == "__main__":

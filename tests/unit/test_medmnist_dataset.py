@@ -82,8 +82,9 @@ def test_class_names_come_from_official_metadata():
 
 
 def test_config_validation_accepts_medmnist_and_checks_class_count():
-    cfg = load_config(overrides=["dataset.name=dermamnist", "dataset.num_classes=7",
-                                 "model.num_classes=7"])
+    cfg = load_config(
+        overrides=["dataset.name=dermamnist", "dataset.num_classes=7", "model.num_classes=7"]
+    )
     assert cfg.dataset.name == "dermamnist"
     with pytest.raises(ValueError):
         load_config(overrides=["dataset.name=dermamnist", "dataset.num_classes=10"])
@@ -95,6 +96,5 @@ def test_config_override_selects_yaml_file():
     cfg = load_config(overrides=["config=cifar100"])
     assert cfg.dataset.name == "cifar100"
     assert cfg.dataset.num_classes == 100
-    # dotted overrides still win over the selected file
     cfg = load_config(overrides=["config=cifar100", "training.epochs=3"])
     assert cfg.training.epochs == 3

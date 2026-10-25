@@ -87,7 +87,6 @@ def evaluate_model(
     all_labels: List[int] = []
     all_probs: List[np.ndarray] = []
 
-    # Reset peak memory counter
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
@@ -114,28 +113,28 @@ def evaluate_model(
     elapsed = time.perf_counter() - t0
     throughput = total_images / elapsed
 
-    # --- sklearn metrics ---
     y_true = np.array(all_labels)
     y_pred = np.array(all_preds)
 
     accuracy = float(accuracy_score(y_true, y_pred))
-    # Fix the label set so every per-class list has num_classes entries in
-    # class-index order, regardless of which classes appear in this split.
     labels = np.arange(num_classes) if num_classes else None
-    precision_macro = float(precision_score(y_true, y_pred, labels=labels, average="macro", zero_division=0))
-    recall_macro    = float(recall_score(y_true, y_pred, labels=labels, average="macro", zero_division=0))
-    f1_macro        = float(f1_score(y_true, y_pred, labels=labels, average="macro", zero_division=0))
+    precision_macro = float(
+        precision_score(y_true, y_pred, labels=labels, average="macro", zero_division=0)
+    )
+    recall_macro = float(
+        recall_score(y_true, y_pred, labels=labels, average="macro", zero_division=0)
+    )
+    f1_macro = float(f1_score(y_true, y_pred, labels=labels, average="macro", zero_division=0))
 
-    precision_per  = precision_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
-    recall_per     = recall_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
-    f1_per         = f1_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
+    precision_per = precision_score(
+        y_true, y_pred, labels=labels, average=None, zero_division=0
+    ).tolist()
+    recall_per = recall_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
+    f1_per = f1_score(y_true, y_pred, labels=labels, average=None, zero_division=0).tolist()
 
     cm_arr = confusion_matrix(y_true, y_pred, labels=labels)
     cm = cm_arr.tolist()
 
-    # --- Medical-style metrics -------------------------------------------
-    # Sensitivity = recall of the class; specificity = TN / (TN + FP) with the
-    # class treated as "positive" against all others.
     balanced_acc = float(balanced_accuracy_score(y_true, y_pred))
     support = cm_arr.sum(axis=1)
     tp = np.diag(cm_arr)
@@ -146,39 +145,36 @@ def evaluate_model(
     probs = np.concatenate(all_probs) if all_probs else np.zeros((0, 0))
     auc_macro, auc_per_class = _auc_scores(y_true, probs, num_classes)
 
-    # --- Hardware ---
     peak_mem_mb = 0.0
     if device.type == "cuda":
-        peak_mem_mb = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+        peak_mem_mb = torch.cuda.max_memory_allocated(device) / (1024**2)
 
     results = {
-        "accuracy":               accuracy,
-        "precision":              precision_macro,
-        "recall":                 recall_macro,
-        "f1":                     f1_macro,
-        "per_class_precision":    precision_per,
-        "per_class_recall":       recall_per,
-        "per_class_f1":           f1_per,
-        "confusion_matrix":       cm,
-        "balanced_accuracy":      balanced_acc,
-        "per_class_sensitivity":  recall_per,
-        "per_class_specificity":  specificity,
-        "per_class_support":      support.tolist(),
-        "auc_macro_ovr":          auc_macro,
-        "per_class_auc":          auc_per_class,
+        "accuracy": accuracy,
+        "precision": precision_macro,
+        "recall": recall_macro,
+        "f1": f1_macro,
+        "per_class_precision": precision_per,
+        "per_class_recall": recall_per,
+        "per_class_f1": f1_per,
+        "confusion_matrix": cm,
+        "balanced_accuracy": balanced_acc,
+        "per_class_sensitivity": recall_per,
+        "per_class_specificity": specificity,
+        "per_class_support": support.tolist(),
+        "auc_macro_ovr": auc_macro,
+        "per_class_auc": auc_per_class,
         "throughput_img_per_sec": throughput,
-        "peak_gpu_memory_mb":     peak_mem_mb,
-        "num_samples":            total_images,
-        "class_names":            class_names or [],
+        "peak_gpu_memory_mb": peak_mem_mb,
+        "num_samples": total_images,
+        "class_names": class_names or [],
     }
 
     _log_summary(results)
     return results
 
 
-def _auc_scores(
-    y_true: np.ndarray, probs: np.ndarray, num_classes: Optional[int]
-) -> tuple:
+def _auc_scores(y_true: np.ndarray, probs: np.ndarray, num_classes: Optional[int]) -> tuple:
     """Macro one-vs-rest AUC and per-class AUC.
 
     A class that never occurs (or always occurs) in ``y_true`` has no defined
@@ -190,7 +186,7 @@ def _auc_scores(
     n_cls = num_classes or probs.shape[1]
     per_class: List[Optional[float]] = []
     for c in range(n_cls):
-        positive = (y_true == c)
+        positive = y_true == c
         if positive.all() or not positive.any() or c >= probs.shape[1]:
             per_class.append(None)
         else:
@@ -217,33 +213,40 @@ def _log_summary(results: Dict) -> None:
 
 def print_metrics_table(results: Dict) -> None:
     """Pretty-print a classification report to stdout."""
-    print(f"\n{'='*60}")
-    print(f"  Overall  | Acc={results['accuracy']:.4f}  "
-          f"P={results['precision']:.4f}  "
-          f"R={results['recall']:.4f}  "
-          f"F1={results['f1']:.4f}")
+    print(f"\n{'=' * 60}")
+    print(
+        f"  Overall  | Acc={results['accuracy']:.4f}  "
+        f"P={results['precision']:.4f}  "
+        f"R={results['recall']:.4f}  "
+        f"F1={results['f1']:.4f}"
+    )
     if "balanced_accuracy" in results:
         auc = results.get("auc_macro_ovr")
-        print(f"  Balanced accuracy: {results['balanced_accuracy']:.4f}   "
-              f"Macro AUC: {auc:.4f}" if auc is not None else
-              f"  Balanced accuracy: {results['balanced_accuracy']:.4f}   Macro AUC: n/a")
+        print(
+            f"  Balanced accuracy: {results['balanced_accuracy']:.4f}   Macro AUC: {auc:.4f}"
+            if auc is not None
+            else f"  Balanced accuracy: {results['balanced_accuracy']:.4f}   Macro AUC: n/a"
+        )
     print(f"  Samples  : {results['num_samples']}")
     print(f"  Speed    : {results['throughput_img_per_sec']:.1f} img/s")
     if results["peak_gpu_memory_mb"] > 0:
         print(f"  GPU Mem  : {results['peak_gpu_memory_mb']:.1f} MB (peak)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     class_names = results.get("class_names") or []
     if class_names:
+
         def at(key, i):
             vals = results.get(key) or []
             v = vals[i] if i < len(vals) else None
             return f"{v:>8.4f}" if v is not None else f"{'n/a':>8}"
 
         print(f"\n  {'Class':<28} {'Prec':>8} {'Sens':>8} {'Spec':>8} {'F1':>8} {'AUC':>8}")
-        print(f"  {'-'*72}")
+        print(f"  {'-' * 72}")
         for i, name in enumerate(class_names):
-            print(f"  {name[:27]:<28} {at('per_class_precision', i)} "
-                  f"{at('per_class_recall', i)} {at('per_class_specificity', i)} "
-                  f"{at('per_class_f1', i)} {at('per_class_auc', i)}")
+            print(
+                f"  {name[:27]:<28} {at('per_class_precision', i)} "
+                f"{at('per_class_recall', i)} {at('per_class_specificity', i)} "
+                f"{at('per_class_f1', i)} {at('per_class_auc', i)}"
+            )
     print()

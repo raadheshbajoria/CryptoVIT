@@ -51,7 +51,7 @@ def test_split_batch_rejects_non_positive(args):
 
 def test_variant_cfg_only_changes_crypto_embedding_variants():
     ablation = _load_run_ablation()
-    cfg = load_config()  # batch_size 128, accumulation 1
+    cfg = load_config()
     assert cfg.training.batch_size == 128
 
     for variant in ("A", "B"):
@@ -62,6 +62,5 @@ def test_variant_cfg_only_changes_crypto_embedding_variants():
         v = ablation._variant_cfg(variant, cfg)
         assert (v.training.batch_size, v.training.accumulation_steps) == (32, 4)
 
-    # The original config must not be mutated.
     assert cfg.training.batch_size == 128
     assert cfg.training.accumulation_steps == 1

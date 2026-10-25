@@ -1,4 +1,4 @@
-﻿# configs/cifar100.yaml
+# configs/cifar100.yaml
 # Overrides for CIFAR-100 main benchmark
 # Merge on top of base.yaml
 

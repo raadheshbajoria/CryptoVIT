@@ -55,9 +55,7 @@ class TestExpectedEntropy:
 
     def test_compute_entropy_reports_reference(self, image):
         ent = compute_entropy(image)
-        assert ent["expected_for_uniform_noise"] == pytest.approx(
-            expected_uniform_entropy(32 * 32)
-        )
+        assert ent["expected_for_uniform_noise"] == pytest.approx(expected_uniform_entropy(32 * 32))
 
 
 class TestPlaintextSensitivity:
@@ -68,7 +66,6 @@ class TestPlaintextSensitivity:
 
     def test_no_diffusion_cipher_scores_near_zero(self, image):
         res = plaintext_sensitivity(image, "k", _pixelwise_cipher, n_trials=5)
-        # one changed value out of 32*32*3
         assert res["npcr"] == pytest.approx(100 / image.size, rel=1e-6)
         assert res["npcr"] < 0.1
 
@@ -104,7 +101,6 @@ def test_compute_all_includes_both_sensitivities_when_key_given(image):
     out = compute_all_security_metrics(image, enc, key="k", encrypt_fn=enc_fn)
     assert "key_sensitivity" in out
     assert "plaintext_sensitivity" in out
-    # Legacy keys kept for API/dashboard compatibility
     assert "npcr_plain_vs_enc" in out and "uaci_plain_vs_enc" in out
 
 

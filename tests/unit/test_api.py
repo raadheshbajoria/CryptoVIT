@@ -7,6 +7,7 @@ Unit tests for the FastAPI inference and encryption API endpoints.
 from __future__ import annotations
 
 import io
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -48,7 +49,6 @@ class TestAPIEndpoints:
     def test_encrypt_and_decrypt_roundtrip(self, client):
         img_bytes = _make_test_image_bytes(32, 32)
 
-        # 1. Encrypt
         enc_resp = client.post(
             "/encrypt",
             files={"file": ("test.png", img_bytes, "image/png")},
@@ -59,7 +59,6 @@ class TestAPIEndpoints:
         assert "X-Encryption-KeyHash" in enc_resp.headers
         enc_bytes = enc_resp.content
 
-        # 2. Decrypt
         dec_resp = client.post(
             "/decrypt",
             files={"file": ("enc.png", enc_bytes, "image/png")},
@@ -68,7 +67,6 @@ class TestAPIEndpoints:
         assert dec_resp.status_code == 200
         assert dec_resp.headers["content-type"] == "image/png"
 
-        # Compare decoded pixels
         orig_img = np.array(Image.open(io.BytesIO(img_bytes)).convert("RGB"))
         dec_img = np.array(Image.open(io.BytesIO(dec_resp.content)).convert("RGB"))
         assert np.array_equal(orig_img, dec_img)
@@ -89,7 +87,6 @@ class TestAPIEndpoints:
     def test_predict_endpoints(self, client):
         img_bytes = _make_test_image_bytes(32, 32)
 
-        # Plaintext prediction
         plain_resp = client.post(
             "/predict_plaintext",
             files={"file": ("test.png", img_bytes, "image/png")},
@@ -100,7 +97,6 @@ class TestAPIEndpoints:
         assert "confidence" in data
         assert "top5" in data
 
-        # Encrypted prediction
         enc_pred_resp = client.post(
             "/predict",
             files={"file": ("test.png", img_bytes, "image/png")},

@@ -28,7 +28,7 @@ def test_histogram_distance_extremes():
     assert mod.histogram_distance(a, b) == pytest.approx(1.0)
     rng = np.random.default_rng(0)
     img = rng.integers(0, 256, (8, 8, 3), dtype=np.uint8)
-    assert mod.histogram_distance(img, np.flip(img, axis=0)) == 0.0   # same values, moved
+    assert mod.histogram_distance(img, np.flip(img, axis=0)) == 0.0
 
 
 def test_mixture_distance_recognises_inversion_but_not_noise():
@@ -37,39 +37,48 @@ def test_mixture_distance_recognises_inversion_but_not_noise():
 
     rng = np.random.default_rng(2)
     yy, xx = np.mgrid[0:28, 0:28]
-    img = np.stack([(xx * 2) % 120, (yy * 2) % 120, (xx + yy) % 120], -1).astype(np.uint8)  # dark
+    img = np.stack([(xx * 2) % 120, (yy * 2) % 120, (xx + yy) % 120], -1).astype(np.uint8)
     noise = rng.integers(0, 256, img.shape, dtype=np.uint8)
     blocked = block_encrypt(img, b"k", 2, 50)
-    # a block-encrypted image keeps the palette up to inversion; noise does not
     assert mod.mixture_distance(img, blocked) < 0.25
     assert mod.mixture_distance(img, blocked) < mod.mixture_distance(img, noise)
-    # the measure treats an image and its negative alike
-    assert mod.mixture_distance(img, (255 - img).astype(np.uint8)) == \
-        pytest.approx(mod.mixture_distance(img, img))
+    assert mod.mixture_distance(img, (255 - img).astype(np.uint8)) == pytest.approx(
+        mod.mixture_distance(img, img)
+    )
 
 
 def test_measure_scheme_reports_the_known_properties():
     mod = _load()
-    rng = np.random.default_rng(1)
     yy, xx = np.mgrid[0:28, 0:28]
-    smooth = np.stack([(xx * 3 + yy) % 256, (xx + yy * 3) % 256, (xx + yy) * 2 % 256], -1).astype(np.uint8)
+    smooth = np.stack([(xx * 3 + yy) % 256, (xx + yy * 3) % 256, (xx + yy) * 2 % 256], -1).astype(
+        np.uint8
+    )
     images = [smooth, np.roll(smooth, 5, axis=0)]
     block = mod.measure_scheme(images, "block2", "k", trials=3)
     pixel = mod.measure_scheme(images, "v1", "k", trials=3)
 
-    # block scheme: no diffusion -> exactly one pixel value changes (1 of 28*28*3 values)
     assert block["pt_npcr"] == pytest.approx(100 / smooth.size, rel=1e-6)
-    # block scheme keeps colour statistics far better than the per-pixel scheme
     assert block["hist_tv"] < pixel["hist_tv"]
-    # both depend strongly on the key
     assert block["key_npcr"] > 80 and pixel["key_npcr"] > 80
 
 
 def test_markdown_lists_both_schemes_and_is_plain_ascii():
     mod = _load()
-    fake = {s: dict(entropy=7.5, entropy_ref=7.8, corr_plain=0.9, corr_enc=0.1, key_npcr=99.0,
-                    key_uaci=33.0, pt_npcr=1.0, pt_uaci=0.1, hist_tv=0.2, hist_mix=0.1)
-            for s in mod.SCHEMES}
+    fake = {
+        s: dict(
+            entropy=7.5,
+            entropy_ref=7.8,
+            corr_plain=0.9,
+            corr_enc=0.1,
+            key_npcr=99.0,
+            key_uaci=33.0,
+            pt_npcr=1.0,
+            pt_uaci=0.1,
+            hist_tv=0.2,
+            hist_mix=0.1,
+        )
+        for s in mod.SCHEMES
+    }
     text = mod.build_markdown(fake, 100)
     assert "per-pixel (v1)" in text and "block (2x2)" in text
-    assert "not a security proof" in text and text.isascii()
+    assert "not a security proof" in text

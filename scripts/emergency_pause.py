@@ -77,29 +77,39 @@ def freeze_new_trees(guard, pids: List[int], already: Dict[int, Set[int]]) -> in
     return newly
 
 
-def watch(limit: float, interval: float, pid_files: List[str], latch: Path,
-          temperature: Callable[[], Optional[float]] = None, max_hours: float = 12.0) -> int:
+def watch(
+    limit: float,
+    interval: float,
+    pid_files: List[str],
+    latch: Path,
+    temperature: Callable[[], Optional[float]] = None,
+    max_hours: float = 12.0,
+) -> int:
     guard = _load_guard()
     temperature = temperature or guard.gpu_temperature
     state = EmergencyState(limit)
     frozen: Dict[int, Set[int]] = {}
     end = time.time() + max_hours * 3600
-    logger.info("Watching the GPU: everything pauses at >= %.0f C and stays paused. Latch: %s",
-                limit, latch)
+    logger.info(
+        "Watching the GPU: everything pauses at >= %.0f C and stays paused. Latch: %s", limit, latch
+    )
 
     while time.time() < end:
         temp = temperature()
         if state.update(temp):
             latch.parent.mkdir(parents=True, exist_ok=True)
-            latch.write_text(f"EMERGENCY PAUSE at {time.strftime('%Y-%m-%d %H:%M:%S')}: GPU {temp:.0f} C\n"
-                             "Everything is frozen. Resume with: python scripts/emergency_pause.py --resume\n")
+            latch.write_text(
+                f"EMERGENCY PAUSE at {time.strftime('%Y-%m-%d %H:%M:%S')}: GPU {temp:.0f} C\n"
+                "Everything is frozen. Resume with: python scripts/emergency_pause.py --resume\n"
+            )
             logger.error("GPU at %.0f C (limit %.0f): EMERGENCY PAUSE.", temp, limit)
         if state.tripped:
-            # keep freezing anything that appears later (e.g. a job started after the trip)
             freeze_new_trees(guard, read_pids(pid_files), frozen)
         time.sleep(interval)
-    logger.info("Watchdog time limit reached; exiting%s.",
-                " (the pause is still active)" if state.tripped else "")
+    logger.info(
+        "Watchdog time limit reached; exiting%s.",
+        " (the pause is still active)" if state.tripped else "",
+    )
     return 0
 
 
@@ -123,8 +133,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     mode.add_argument("--resume", action="store_true")
     p.add_argument("--limit", type=float, default=90.0)
     p.add_argument("--interval", type=float, default=2.0)
-    p.add_argument("--pid-file", action="append", default=None,
-                   help="train.pid file or glob (repeatable)")
+    p.add_argument(
+        "--pid-file", action="append", default=None, help="train.pid file or glob (repeatable)"
+    )
     p.add_argument("--latch", default="experiments/EMERGENCY_PAUSE.txt")
     p.add_argument("--log", default="experiments/emergency_pause.log")
     p.add_argument("--max-hours", type=float, default=12.0)
@@ -135,8 +146,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.log:
         Path(args.log).parent.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(args.log, encoding="utf-8"))
-    logging.basicConfig(level=logging.INFO, handlers=handlers,
-                        format="%(asctime)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    logging.basicConfig(
+        level=logging.INFO,
+        handlers=handlers,
+        format="%(asctime)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     latch = Path(args.latch)
     if args.resume:
         return resume(pid_files, latch)

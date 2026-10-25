@@ -28,6 +28,7 @@ class TestLoadConfig:
 
     def test_dot_notation_override(self):
         from cryptovit.utils import load_config
+
         cfg = load_config(overrides=["training.batch_size=32"])
         assert cfg.training.batch_size == 32
 
@@ -36,6 +37,7 @@ class TestLoadConfig:
 
     def test_invalid_dataset_name_raises(self):
         from cryptovit.utils import load_config
+
         with pytest.raises(ValueError, match="dataset.name"):
             load_config(overrides=["dataset.name=imagenet"])
 
@@ -43,12 +45,13 @@ class TestLoadConfig:
         """load_config must inject an absolute project_root path."""
         assert "project_root" in base_cfg.paths
         from pathlib import Path
+
         root = Path(base_cfg.paths.project_root)
         assert root.is_absolute()
         assert (root / "configs" / "base.yaml").exists()
 
     def test_mismatched_num_classes_raises(self):
         from cryptovit.utils import load_config
+
         with pytest.raises(ValueError, match="num_classes"):
-            # cifar10 with 100 classes – should raise
             load_config(overrides=["dataset.name=cifar10", "dataset.num_classes=100"])

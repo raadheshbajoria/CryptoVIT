@@ -37,10 +37,6 @@ from cryptovit.encryption import dna as dna_ops
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Forward diffusion
-# ---------------------------------------------------------------------------
-
 def diffuse(
     image: np.ndarray,
     keystream: np.ndarray,
@@ -54,7 +50,7 @@ def diffuse(
         Permuted image to diffuse.
     keystream : (H * W) uint8 array
         Key-stream bytes from ``KeyGenerator.diffusion_keystream``.
-    rule_seq : (H * W) uint8 array [values 0–7]
+    rule_seq : (H * W) uint8 array [values 0-7]
         Per-pixel DNA rule from ``KeyGenerator.dna_rule_sequence``.
 
     Returns
@@ -72,34 +68,25 @@ def diffuse(
 
     result = np.empty_like(image)
     for c in range(C):
-        channel = image[:, :, c].reshape(-1)       # (n,)
+        channel = image[:, :, c].reshape(-1)
         ks = keystream[:n] if keystream.ndim == 1 else keystream[:n, c]
         rules = rule_seq[:n].astype(np.uint8)
 
-        # 1. Encode image pixels to DNA   shape: (n, 4)
         img_dna = dna_ops.encode(channel, rules)
 
-        # 2. Encode key-stream to DNA using complementary rule
-        key_rules = (rules + 4) % 8                # shifted rule for key-stream
+        key_rules = (rules + 4) % 8
         key_dna = dna_ops.encode(ks, key_rules)
 
-        # 3. DNA XOR
         xored_dna = dna_ops.dna_xor(img_dna, key_dna)
 
-        # 4. Decode back to uint8
         diffused_channel = dna_ops.decode(xored_dna, rules)
 
-        # 5. Chained byte XOR for diffusion avalanche
         diffused_channel = _chain_xor(diffused_channel, ks)
 
         result[:, :, c] = diffused_channel.reshape(H, W)
 
     return result[:, :, 0] if is_2d else result
 
-
-# ---------------------------------------------------------------------------
-# Inverse diffusion
-# ---------------------------------------------------------------------------
 
 def inverse_diffuse(
     diffused: np.ndarray,
@@ -111,8 +98,8 @@ def inverse_diffuse(
     Parameters
     ----------
     diffused : (H, W, C) or (H, W) uint8 array
-    keystream : (H * W) uint8 array  — same as used during encryption
-    rule_seq  : (H * W) uint8 array  — same as used during encryption
+    keystream : (H * W) uint8 array  - same as used during encryption
+    rule_seq  : (H * W) uint8 array  - same as used during encryption
 
     Returns
     -------
@@ -133,28 +120,20 @@ def inverse_diffuse(
         ks = keystream[:n] if keystream.ndim == 1 else keystream[:n, c]
         rules = rule_seq[:n].astype(np.uint8)
 
-        # 5 (undo). Reverse chained XOR
         un_chained = _inverse_chain_xor(channel, ks)
 
-        # 4 (undo). Re-encode to DNA using same rules
         img_dna = dna_ops.encode(un_chained, rules)
 
-        # 3 (undo). Re-encode key-stream and XOR again (XOR is self-inverse)
         key_rules = (rules + 4) % 8
         key_dna = dna_ops.encode(ks, key_rules)
         restored_dna = dna_ops.dna_xor(img_dna, key_dna)
 
-        # 2 (undo). Decode back to uint8
         restored_channel = dna_ops.decode(restored_dna, rules)
 
         result[:, :, c] = restored_channel.reshape(H, W)
 
     return result[:, :, 0] if is_2d else result
 
-
-# ---------------------------------------------------------------------------
-# Chained XOR helpers
-# ---------------------------------------------------------------------------
 
 def _chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
     """Forward chained XOR: out[i] = data[i] XOR key[i] XOR out[i-1].
@@ -165,8 +144,6 @@ def _chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
     n = len(data)
     if n == 0:
         return np.empty(0, dtype=np.uint8)
-    # Unrolling out[i] = d[i]^k[i]^out[i-1] gives a running XOR of (d^k),
-    # seeded with key[-1]; this is the vectorised form of the sequential loop.
     mixed = np.bitwise_xor(data.astype(np.uint8), key[:n].astype(np.uint8))
     return np.bitwise_xor.accumulate(mixed) ^ np.uint8(key[n - 1])
 
@@ -181,10 +158,6 @@ def _inverse_chain_xor(data: np.ndarray, key: np.ndarray) -> np.ndarray:
     return data ^ key[:n].astype(np.uint8) ^ previous
 
 
-# ---------------------------------------------------------------------------
-# Input validation
-# ---------------------------------------------------------------------------
-
 def _validate_inputs(
     image: np.ndarray,
     keystream: np.ndarray,
@@ -195,10 +168,6 @@ def _validate_inputs(
     H, W = image.shape[:2]
     n = H * W
     if len(keystream) < n:
-        raise ValueError(
-            f"keystream too short: need {n}, got {len(keystream)}"
-        )
+        raise ValueError(f"keystream too short: need {n}, got {len(keystream)}")
     if len(rule_seq) < n:
-        raise ValueError(
-            f"rule_seq too short: need {n}, got {len(rule_seq)}"
-        )
+        raise ValueError(f"rule_seq too short: need {n}, got {len(rule_seq)}")

@@ -8,18 +8,18 @@ Metrics implemented
 * Shannon entropy (per channel and overall)
 * Histogram uniformity (chi-squared statistic and visual check)
 * Adjacent-pixel correlation (horizontal, vertical, diagonal)
-* NPCR  — Number of Pixels Change Rate
-* UACI  — Unified Average Changing Intensity
-* Key sensitivity — divergence after a tiny key perturbation
+* NPCR  - Number of Pixels Change Rate
+* UACI  - Unified Average Changing Intensity
+* Key sensitivity - divergence after a tiny key perturbation
 * Encryption/decryption time
 
 These metrics are standard in the image-encryption literature.
 Reference values often quoted for a good scheme on large images:
   Entropy  > 7.99  (max 8.0; unreachable for small images, see below)
-  NPCR     > 99%   (ideally ~99.6%)  — plaintext sensitivity: change ONE
+  NPCR     > 99%   (ideally ~99.6%)  - plaintext sensitivity: change ONE
                                        plaintext pixel, compare the two ciphertexts
-  UACI     ~ 33%   (ideal 33.46%)    — same test as NPCR
-  Correlation ≈ 0  (should be < 0.01 in absolute value)
+  UACI     ~ 33%   (ideal 33.46%)    - same test as NPCR
+  Correlation ~ 0  (should be < 0.01 in absolute value)
 
 Caveats
 -------
@@ -49,10 +49,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Shannon Entropy
-# ---------------------------------------------------------------------------
 
 def expected_uniform_entropy(n_samples: int, levels: int = 256) -> float:
     """Expected plug-in entropy of ``n_samples`` i.i.d. uniform samples.
@@ -101,17 +97,13 @@ def compute_entropy(image: np.ndarray) -> Dict[str, float]:
     return results
 
 
-# ---------------------------------------------------------------------------
-# Histogram Uniformity
-# ---------------------------------------------------------------------------
-
 def histogram_analysis(
     image: np.ndarray,
 ) -> Dict[str, float]:
     """Compute chi-squared statistic against a uniform histogram.
 
     For a perfectly encrypted image each intensity level appears equally
-    often → chi-squared ≈ 0.
+    often -> chi-squared ~ 0.
 
     Parameters
     ----------
@@ -139,10 +131,6 @@ def histogram_analysis(
     results["chi_squared_overall"] = float(np.mean(chi_all))
     return results
 
-
-# ---------------------------------------------------------------------------
-# Adjacent-Pixel Correlation
-# ---------------------------------------------------------------------------
 
 def _pearson_correlation(a: np.ndarray, b: np.ndarray) -> float:
     """Pearson correlation between two 1-D arrays."""
@@ -187,42 +175,35 @@ def adjacent_pixel_correlation(
     for c in range(C):
         ch = image[:, :, c].astype(np.float64)
 
-        # Horizontal pairs
         rs_h = rng.integers(0, H, n_samples)
         cs_h = rng.integers(0, W - 1, n_samples)
         hcorr = _pearson_correlation(ch[rs_h, cs_h], ch[rs_h, cs_h + 1])
 
-        # Vertical pairs
         rs_v = rng.integers(0, H - 1, n_samples)
         cs_v = rng.integers(0, W, n_samples)
         vcorr = _pearson_correlation(ch[rs_v, cs_v], ch[rs_v + 1, cs_v])
 
-        # Diagonal pairs
         rs_d = rng.integers(0, H - 1, n_samples)
         cs_d = rng.integers(0, W - 1, n_samples)
         dcorr = _pearson_correlation(ch[rs_d, cs_d], ch[rs_d + 1, cs_d + 1])
 
         results[f"horizontal_c{c}"] = hcorr
-        results[f"vertical_c{c}"]   = vcorr
-        results[f"diagonal_c{c}"]   = dcorr
+        results[f"vertical_c{c}"] = vcorr
+        results[f"diagonal_c{c}"] = dcorr
         h_all.append(hcorr)
         v_all.append(vcorr)
         d_all.append(dcorr)
 
     results["horizontal"] = float(np.mean(h_all))
-    results["vertical"]   = float(np.mean(v_all))
-    results["diagonal"]   = float(np.mean(d_all))
+    results["vertical"] = float(np.mean(v_all))
+    results["diagonal"] = float(np.mean(d_all))
     return results
 
-
-# ---------------------------------------------------------------------------
-# NPCR — Number of Pixels Change Rate
-# ---------------------------------------------------------------------------
 
 def npcr(img1: np.ndarray, img2: np.ndarray) -> float:
     """Compute NPCR between two images encrypted with near-identical keys.
 
-    NPCR = (number of pixels that differ) / (total pixels) × 100%
+    NPCR = (number of pixels that differ) / (total pixels) x 100%
 
     Parameters
     ----------
@@ -238,14 +219,10 @@ def npcr(img1: np.ndarray, img2: np.ndarray) -> float:
     return float(diff.mean() * 100.0)
 
 
-# ---------------------------------------------------------------------------
-# UACI — Unified Average Changing Intensity
-# ---------------------------------------------------------------------------
-
 def uaci(img1: np.ndarray, img2: np.ndarray) -> float:
     """Compute UACI between two images.
 
-    UACI = mean(|c1 - c2| / 255) × 100%
+    UACI = mean(|c1 - c2| / 255) x 100%
     Ideal value for a good cipher is ~33.46%.
 
     Parameters
@@ -262,10 +239,6 @@ def uaci(img1: np.ndarray, img2: np.ndarray) -> float:
     return float(diff.mean() / 255.0 * 100.0)
 
 
-# ---------------------------------------------------------------------------
-# Key Sensitivity
-# ---------------------------------------------------------------------------
-
 def key_sensitivity(
     image: np.ndarray,
     key: str,
@@ -277,8 +250,8 @@ def key_sensitivity(
     Parameters
     ----------
     image : uint8 array
-    key : str — original encryption key
-    encrypt_fn : callable(image, key) → encrypted_image
+    key : str - original encryption key
+    encrypt_fn : callable(image, key) -> encrypted_image
         Should accept an image and key string and return the encrypted array.
     delta_chars : int
         Number of characters to flip at the end of the key.
@@ -289,7 +262,6 @@ def key_sensitivity(
     """
     enc1 = encrypt_fn(image, key)
 
-    # Slightly different key: flip the last character
     key_modified = key[:-delta_chars] + chr(ord(key[-1]) ^ 1)
     enc2 = encrypt_fn(image, key_modified)
 
@@ -298,10 +270,6 @@ def key_sensitivity(
         "uaci": uaci(enc1, enc2),
     }
 
-
-# ---------------------------------------------------------------------------
-# Plaintext Sensitivity (the standard NPCR / UACI test)
-# ---------------------------------------------------------------------------
 
 def plaintext_sensitivity(
     image: np.ndarray,
@@ -353,10 +321,6 @@ def plaintext_sensitivity(
     }
 
 
-# ---------------------------------------------------------------------------
-# Encryption / Decryption Timing
-# ---------------------------------------------------------------------------
-
 def measure_encryption_time(
     image: np.ndarray,
     encrypt_fn: Callable,
@@ -369,8 +333,8 @@ def measure_encryption_time(
     Parameters
     ----------
     image : uint8 array
-    encrypt_fn : callable(image, key) → (encrypted, meta)
-    decrypt_fn : callable(encrypted, key, meta) → image
+    encrypt_fn : callable(image, key) -> (encrypted, meta)
+    decrypt_fn : callable(encrypted, key, meta) -> image
     key : str
     n_trials : int
 
@@ -395,10 +359,6 @@ def measure_encryption_time(
     }
 
 
-# ---------------------------------------------------------------------------
-# Combined: all metrics in one call
-# ---------------------------------------------------------------------------
-
 def compute_all_security_metrics(
     plaintext: np.ndarray,
     encrypted: np.ndarray,
@@ -409,10 +369,10 @@ def compute_all_security_metrics(
 
     Parameters
     ----------
-    plaintext : uint8 array — original image
-    encrypted : uint8 array — encrypted image (same shape)
-    key : str, optional — required for key_sensitivity test
-    encrypt_fn : callable, optional — required for key_sensitivity test
+    plaintext : uint8 array - original image
+    encrypted : uint8 array - encrypted image (same shape)
+    key : str, optional - required for key_sensitivity test
+    encrypt_fn : callable, optional - required for key_sensitivity test
 
     Returns
     -------
@@ -420,32 +380,21 @@ def compute_all_security_metrics(
     """
     results: Dict = {}
 
-    # Entropy of encrypted image (should be > 7.99)
     results["entropy"] = compute_entropy(encrypted)
 
-    # Histogram uniformity
     results["histogram"] = histogram_analysis(encrypted)
 
-    # Adjacent-pixel correlation of encrypted image (should be ~0)
     results["correlation_encrypted"] = adjacent_pixel_correlation(encrypted)
 
-    # Adjacent-pixel correlation of plaintext (for comparison)
     results["correlation_plaintext"] = adjacent_pixel_correlation(plaintext)
 
-    # Fraction of pixels / mean intensity change between a plaintext and its OWN
-    # ciphertext. This is NOT the standard NPCR/UACI (those compare two
-    # ciphertexts, see ``plaintext_sensitivity``); key names kept for the API.
     results["npcr_plain_vs_enc"] = npcr(plaintext, encrypted)
     results["uaci_plain_vs_enc"] = uaci(plaintext, encrypted)
 
     if key is not None and encrypt_fn is not None:
         cipher_only = lambda img, k: encrypt_fn(img, k)[0]  # noqa: E731
 
-        # Key sensitivity: ciphertexts under two keys differing in one bit
-        results["key_sensitivity"] = key_sensitivity(
-            plaintext, key, encrypt_fn=cipher_only
-        )
-        # Plaintext sensitivity: standard NPCR/UACI (one changed pixel)
+        results["key_sensitivity"] = key_sensitivity(plaintext, key, encrypt_fn=cipher_only)
         results["plaintext_sensitivity"] = plaintext_sensitivity(
             plaintext, key, encrypt_fn=cipher_only
         )

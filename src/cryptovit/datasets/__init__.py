@@ -5,13 +5,13 @@ Dataset management for CryptoViT.
 
 Public API
 ----------
-``get_dataloaders``            – Build train/val/test DataLoaders.
-``build_train_transform``      – Training augmentation pipeline.
-``build_eval_transform``       – Deterministic evaluation transform.
-``compute_dataset_stats``      – Empirical per-channel mean/std.
-``get_class_names``            – Ordered class label list.
-``EncryptedCIFARDataset``      – Encrypted CIFAR dataset wrapper.
-``generate_encrypted_dataset`` – Pre-generate encrypted dataset to disk.
+``get_dataloaders``            - Build train/val/test DataLoaders.
+``build_train_transform``      - Training augmentation pipeline.
+``build_eval_transform``       - Deterministic evaluation transform.
+``compute_dataset_stats``      - Empirical per-channel mean/std.
+``get_class_names``            - Ordered class label list.
+``EncryptedCIFARDataset``      - Encrypted CIFAR dataset wrapper.
+``generate_encrypted_dataset`` - Pre-generate encrypted dataset to disk.
 """
 
 from cryptovit.datasets.cifar_dataset import (

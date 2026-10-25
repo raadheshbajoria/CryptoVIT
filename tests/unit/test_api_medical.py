@@ -48,7 +48,6 @@ def test_health_reports_the_medical_task(medical_client):
     assert len(data["class_names"]) == 7 and "melanoma" in data["class_names"]
     assert data["image_size"] == 28
     assert set(data["variants"]) == {"A", "B", "C", "D"}
-    # no checkpoints yet: A and D exist untrained, B and C are not loaded
     assert data["variants"]["A"]["loaded"] and not data["variants"]["A"]["trained"]
     assert data["variants"]["B"]["loaded"] is False
     assert "not a medical device" in data["disclaimer"].lower()
@@ -102,8 +101,9 @@ def test_trained_checkpoint_is_loaded_and_used(tmp_path, monkeypatch):
     ckpt_dir.mkdir(parents=True)
     torch.manual_seed(0)
     model = build_variant_model("B", cfg)
-    torch.save({"model_state_dict": model.state_dict()},
-               ckpt_dir / "checkpoint_epoch0003_acc0.5000.pt")
+    torch.save(
+        {"model_state_dict": model.state_dict()}, ckpt_dir / "checkpoint_epoch0003_acc0.5000.pt"
+    )
 
     monkeypatch.setenv("CRYPTOVIT_CONFIG", "dermamnist")
     monkeypatch.setenv("CRYPTOVIT_EXPERIMENTS", str(tmp_path))
@@ -115,9 +115,9 @@ def test_trained_checkpoint_is_loaded_and_used(tmp_path, monkeypatch):
         cmp = client.post("/compare", files=_files(_png()), data={"key": "k"}).json()
         assert set(cmp["encrypted"]) == {"B", "D"}
         assert cmp["encrypted"]["B"]["trained"] is True
-        # explicitly choosing variant B for /predict
-        one = client.post("/predict", files=_files(_png()),
-                          data={"key": "k", "variant": "b"}).json()
+        one = client.post(
+            "/predict", files=_files(_png()), data={"key": "k", "variant": "b"}
+        ).json()
         assert one["variant"] == "B"
 
 
@@ -137,18 +137,22 @@ def test_results_endpoint(medical_client):
 
     out = tmp / "ablation"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "result_A.json").write_text(json.dumps(
-        {"accuracy": 0.5, "balanced_accuracy": 0.4, "auc_macro_ovr": None}
-    ))
+    (out / "result_A.json").write_text(
+        json.dumps({"accuracy": 0.5, "balanced_accuracy": 0.4, "auc_macro_ovr": None})
+    )
     rows = client.get("/results").json()
     assert rows[0]["variant"] == "A" and rows[0]["balanced_accuracy"] == 0.4
     assert "label" in rows[0]
 
 
 def test_find_best_checkpoint_ignores_last_and_picks_highest(tmp_path):
-    for name in ("checkpoint_epoch0001_acc0.3000.pt", "checkpoint_epoch0005_acc0.6000.pt",
-                 "checkpoint_epoch0007_acc0.5500.pt", "last.pt",
-                 "checkpoint_periodic_epoch0010.pt"):
+    for name in (
+        "checkpoint_epoch0001_acc0.3000.pt",
+        "checkpoint_epoch0005_acc0.6000.pt",
+        "checkpoint_epoch0007_acc0.5500.pt",
+        "last.pt",
+        "checkpoint_periodic_epoch0010.pt",
+    ):
         (tmp_path / name).write_bytes(b"x")
     assert find_best_checkpoint(tmp_path).name == "checkpoint_epoch0005_acc0.6000.pt"
     assert find_best_checkpoint(tmp_path / "missing") is None

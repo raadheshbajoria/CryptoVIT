@@ -64,26 +64,28 @@ def parse_block_scheme(scheme: str) -> Optional[int]:
 
 class BlockStreams(NamedTuple):
     """Key-derived parameters for one (key, image size, block size)."""
-    block_perm: np.ndarray     # (n_blocks,) permutation of block positions
-    pixel_perm: np.ndarray     # (B*B,) permutation of pixels inside a block
-    channel_perm: np.ndarray   # (C,) permutation of colour channels
-    flips: np.ndarray          # (n_blocks,) bool, True -> invert that block
+
+    block_perm: np.ndarray
+    pixel_perm: np.ndarray
+    channel_perm: np.ndarray
+    flips: np.ndarray
 
 
 @lru_cache(maxsize=8)
 def derive_block_streams(
-    key: bytes, height: int, width: int, channels: int, block: int,
+    key: bytes,
+    height: int,
+    width: int,
+    channels: int,
+    block: int,
     transient_steps: int = 1000,
 ) -> BlockStreams:
     """Derive the scrambling parameters. Cached; arrays are read-only."""
     if height % block or width % block:
-        raise ValueError(
-            f"Image size {height}x{width} is not divisible by block size {block}."
-        )
+        raise ValueError(f"Image size {height}x{width} is not divisible by block size {block}.")
     n_blocks = (height // block) * (width // block)
     seed = hashlib.sha256(key + b"block").digest()
     system = HyperchaosSystem(seed, transient_steps=transient_steps)
-    # Fixed draw order: block permutation, pixel permutation, channels, flips.
     block_perm = system.generate_permutation(n_blocks)
     pixel_perm = system.generate_permutation(block * block)
     channel_perm = system.generate_permutation(channels)
@@ -125,12 +127,12 @@ def block_encrypt(
     h, w, c = img.shape
     s = derive_block_streams(key, h, w, c, block, transient_steps)
 
-    out = img[:, :, s.channel_perm]                              # 1. channels
-    blocks = _to_blocks(out, block)                              # (nb, B, B, C)
-    blocks = np.where(s.flips[:, None, None, None], 255 - blocks, blocks).astype(np.uint8)  # 2.
-    flat = blocks.reshape(len(blocks), block * block, c)         # 3. pixels in block
+    out = img[:, :, s.channel_perm]
+    blocks = _to_blocks(out, block)
+    blocks = np.where(s.flips[:, None, None, None], 255 - blocks, blocks).astype(np.uint8)
+    flat = blocks.reshape(len(blocks), block * block, c)
     flat = flat[:, s.pixel_perm, :]
-    blocks = flat.reshape(-1, block, block, c)[s.block_perm]     # 4. block positions
+    blocks = flat.reshape(-1, block, block, c)[s.block_perm]
     result = _from_blocks(blocks, h, w, block)
     return result[:, :, 0] if was_gray else result
 
@@ -145,14 +147,14 @@ def block_decrypt(
 
     blocks = _to_blocks(img, block)
     undone = np.empty_like(blocks)
-    undone[s.block_perm] = blocks                                # undo 4.
+    undone[s.block_perm] = blocks
     flat = undone.reshape(len(undone), block * block, c)
     unshuffled = np.empty_like(flat)
-    unshuffled[:, s.pixel_perm, :] = flat                        # undo 3.
+    unshuffled[:, s.pixel_perm, :] = flat
     blocks = unshuffled.reshape(-1, block, block, c)
-    blocks = np.where(s.flips[:, None, None, None], 255 - blocks, blocks).astype(np.uint8)  # undo 2.
+    blocks = np.where(s.flips[:, None, None, None], 255 - blocks, blocks).astype(np.uint8)
     out = _from_blocks(blocks, h, w, block)
     inverse_channels = np.empty_like(s.channel_perm)
     inverse_channels[s.channel_perm] = np.arange(c)
-    out = out[:, :, inverse_channels]                            # undo 1.
+    out = out[:, :, inverse_channels]
     return out[:, :, 0] if was_gray else out

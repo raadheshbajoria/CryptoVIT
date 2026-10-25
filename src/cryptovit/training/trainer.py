@@ -8,7 +8,7 @@ Features
 * AdamW optimiser with cosine LR schedule + linear warmup
 * PyTorch AMP (mixed precision) for RTX 3050 4GB VRAM
 * Gradient clipping
-* Checkpoint saving — best-K + periodic
+* Checkpoint saving - best-K + periodic
 * Early stopping
 * Rich progress display via tqdm
 * Minimal TensorBoard support (optional)
@@ -35,10 +35,6 @@ from tqdm import tqdm
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# LR Schedule: linear warmup + cosine decay
-# ---------------------------------------------------------------------------
-
 def _cosine_schedule_with_warmup(
     optimizer: torch.optim.Optimizer,
     num_warmup_steps: int,
@@ -51,11 +47,8 @@ def _cosine_schedule_with_warmup(
     def lr_lambda(step: int) -> float:
         if step < num_warmup_steps:
             return float(step) / max(1, num_warmup_steps)
-        progress = float(step - num_warmup_steps) / max(
-            1, num_training_steps - num_warmup_steps
-        )
+        progress = float(step - num_warmup_steps) / max(1, num_training_steps - num_warmup_steps)
         cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
-        # Scale so the minimum is min_lr/base_lr (as a fraction of base_lr)
         scale = min_lr / base_lr
         return max(scale, cosine * (1.0 - scale) + scale)
 
@@ -110,10 +103,6 @@ def split_batch_for_memory(
     return max_micro_batch, accumulation_steps * (batch_size // max_micro_batch)
 
 
-# ---------------------------------------------------------------------------
-# Checkpoint helpers
-# ---------------------------------------------------------------------------
-
 class CheckpointManager:
     """Saves best-K checkpoints and periodic snapshots."""
 
@@ -121,7 +110,7 @@ class CheckpointManager:
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.keep_best_k = keep_best_k
-        self._best: List[Tuple[float, Path]] = []  # (val_acc, path)
+        self._best: List[Tuple[float, Path]] = []
 
     def save(
         self,
@@ -142,7 +131,6 @@ class CheckpointManager:
         torch.save(state, path)
         logger.info("Saved checkpoint: %s", path)
 
-        # Track best-K
         self._best.append((val_acc, path))
         self._best.sort(key=lambda t: t[0], reverse=True)
         if len(self._best) > self.keep_best_k:
@@ -175,10 +163,6 @@ class CheckpointManager:
             return self._best[0][1]
         return None
 
-
-# ---------------------------------------------------------------------------
-# Trainer
-# ---------------------------------------------------------------------------
 
 class Trainer:
     """Encapsulates the complete training loop.
@@ -220,9 +204,7 @@ class Trainer:
         self.cfg = cfg
         self.device = device
         self.experiment_dir = Path(experiment_dir)
-        self.key_embedding = (
-            key_embedding.to(device) if key_embedding is not None else None
-        )
+        self.key_embedding = key_embedding.to(device) if key_embedding is not None else None
 
         t = cfg.training
         self.epochs: int = t.epochs
@@ -240,14 +222,11 @@ class Trainer:
                 f"got '{self.select_metric}'."
             )
 
-        # Loss (optionally class-weighted)
         self.criterion = nn.CrossEntropyLoss(
             weight=class_weights.to(device) if class_weights is not None else None,
             label_smoothing=self.label_smoothing,
         )
 
-        # Optimiser — biases and 1-D params (LayerNorm, embeddings scales)
-        # are excluded from weight decay, which is standard ViT practice.
         decay, no_decay = [], []
         for p in model.parameters():
             if p.requires_grad:
@@ -261,46 +240,36 @@ class Trainer:
             betas=tuple(t.betas),
         )
 
-        # Scheduler (built once dataloaders are provided)
         self.scheduler: Optional[LambdaLR] = None
 
-        # AMP scaler
         device_type = self.device.type if self.device.type in ("cuda", "cpu") else "cuda"
         self.scaler = GradScaler(device_type, enabled=self.use_amp)
 
-        # Checkpoint manager
         ckpt_dir = self.experiment_dir / "checkpoints"
         self.ckpt_manager = CheckpointManager(ckpt_dir, keep_best_k=t.keep_best_k)
 
-        # TensorBoard (optional)
         self.tb_writer = None
         if cfg.logging.use_tensorboard:
             try:
                 from torch.utils.tensorboard import SummaryWriter
+
                 tb_dir = self.experiment_dir / "tensorboard"
                 self.tb_writer = SummaryWriter(log_dir=str(tb_dir))
             except ImportError:
                 logger.warning("TensorBoard not available. Skipping TB logging.")
 
-        # History
         self.history: Dict[str, List[float]] = {
             "train_loss": [],
             "train_acc": [],
             "val_loss": [],
             "val_acc": [],
             "val_balanced_acc": [],
-            "val_score": [],   # value of select_metric, used for "best"
+            "val_score": [],
             "lr": [],
         }
-        # Best value of the selection metric so far (named for history; it is
-        # balanced accuracy when select_metric="balanced_accuracy").
         self._best_val_acc: float = 0.0
         self._no_improve: int = 0
         self._last_val_balanced_acc: float = 0.0
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def fit(
         self,
@@ -329,8 +298,6 @@ class Trainer:
             Training history (losses and accuracies per epoch).
         """
         t = self.cfg.training
-        # The scheduler advances once per optimiser step, not per batch,
-        # so account for gradient accumulation when sizing the schedule.
         steps_per_epoch = math.ceil(len(train_loader) / self.accum_steps)
         total_steps = self.epochs * steps_per_epoch
         warmup_steps = t.warmup_epochs * steps_per_epoch
@@ -345,7 +312,9 @@ class Trainer:
 
         logger.info(
             "Starting training | epochs=%d  steps/epoch=%d  warmup=%d",
-            self.epochs, steps_per_epoch, warmup_steps,
+            self.epochs,
+            steps_per_epoch,
+            warmup_steps,
         )
 
         start_epoch, finished = 1, False
@@ -375,36 +344,45 @@ class Trainer:
             logger.info(
                 "Epoch %3d/%d | train_loss=%.4f acc=%.4f | "
                 "val_loss=%.4f acc=%.4f bal_acc=%.4f | lr=%.2e | %.1fs",
-                epoch, self.epochs,
-                train_loss, train_acc,
-                val_loss, val_acc, val_bal,
-                current_lr, elapsed,
+                epoch,
+                self.epochs,
+                train_loss,
+                train_acc,
+                val_loss,
+                val_acc,
+                val_bal,
+                current_lr,
+                elapsed,
             )
 
             if self.tb_writer:
                 self.tb_writer.add_scalar("Loss/train", train_loss, epoch)
-                self.tb_writer.add_scalar("Loss/val",   val_loss,   epoch)
-                self.tb_writer.add_scalar("Acc/train",  train_acc,  epoch)
-                self.tb_writer.add_scalar("Acc/val",    val_acc,    epoch)
-                self.tb_writer.add_scalar("LR",         current_lr, epoch)
+                self.tb_writer.add_scalar("Loss/val", val_loss, epoch)
+                self.tb_writer.add_scalar("Acc/train", train_acc, epoch)
+                self.tb_writer.add_scalar("Acc/val", val_acc, epoch)
+                self.tb_writer.add_scalar("LR", current_lr, epoch)
 
-            # Checkpointing
             if score > self._best_val_acc:
                 self._best_val_acc = score
                 self._no_improve = 0
                 self.ckpt_manager.save(
-                    self.model, self.optimizer, epoch, score,
-                    extra={"train_acc": train_acc, "val_accuracy": val_acc,
-                           "select_metric": self.select_metric},
+                    self.model,
+                    self.optimizer,
+                    epoch,
+                    score,
+                    extra={
+                        "train_acc": train_acc,
+                        "val_accuracy": val_acc,
+                        "select_metric": self.select_metric,
+                    },
                 )
-                logger.info("  ✓ New best %s: %.4f", self.select_metric, score)
+                logger.info("  New best %s: %.4f", self.select_metric, score)
             else:
                 self._no_improve += 1
 
             if epoch % self.save_every == 0:
                 self.ckpt_manager.save_periodic(self.model, self.optimizer, epoch)
 
-            # Early stopping
             stop = self._no_improve >= self.patience
             self._save_last(epoch, finished=stop or epoch == self.epochs)
             if stop:
@@ -418,10 +396,6 @@ class Trainer:
             self.tb_writer.close()
 
         return self.history
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     @property
     def _last_path(self) -> Path:
@@ -445,9 +419,7 @@ class Trainer:
             "history": self.history,
             "best_val_acc": self._best_val_acc,
             "no_improve": self._no_improve,
-            "best_checkpoints": [
-                (acc, str(path)) for acc, path in self.ckpt_manager._best
-            ],
+            "best_checkpoints": [(acc, str(path)) for acc, path in self.ckpt_manager._best],
         }
         tmp = self._last_path.with_suffix(".tmp")
         torch.save(state, tmp)
@@ -467,12 +439,12 @@ class Trainer:
         self.history = state["history"]
         self._best_val_acc = state["best_val_acc"]
         self._no_improve = state["no_improve"]
-        self.ckpt_manager._best = [
-            (acc, Path(p)) for acc, p in state["best_checkpoints"]
-        ]
+        self.ckpt_manager._best = [(acc, Path(p)) for acc, p in state["best_checkpoints"]]
         logger.info(
             "Resumed from %s: last completed epoch=%d  best_val_acc=%.4f",
-            self._last_path, state["epoch"], self._best_val_acc,
+            self._last_path,
+            state["epoch"],
+            self._best_val_acc,
         )
         return state["epoch"] + 1, bool(state["finished"])
 
@@ -482,9 +454,7 @@ class Trainer:
             return self.model(images)
         return self.model(images, key_embedding=self.key_embedding)
 
-    def _train_epoch(
-        self, loader: DataLoader, epoch: int
-    ) -> Tuple[float, float]:
+    def _train_epoch(self, loader: DataLoader, epoch: int) -> Tuple[float, float]:
         self.model.train()
         total_loss = 0.0
         total_correct = 0
@@ -493,8 +463,10 @@ class Trainer:
         self.optimizer.zero_grad()
 
         pbar = tqdm(
-            enumerate(loader), total=len(loader),
-            desc=f"Train {epoch}/{self.epochs}", leave=False,
+            enumerate(loader),
+            total=len(loader),
+            desc=f"Train {epoch}/{self.epochs}",
+            leave=False,
         )
         for step, (images, labels) in pbar:
             images = images.to(self.device, non_blocking=True)
@@ -516,7 +488,6 @@ class Trainer:
                 if self.scheduler is not None:
                     self.scheduler.step()
 
-            # Accumulate on-device; .item() forces a GPU sync every step.
             with torch.no_grad():
                 total_loss += loss.detach() * self.accum_steps * labels.size(0)
                 total_correct += (logits.argmax(dim=1) == labels).sum()
@@ -528,7 +499,6 @@ class Trainer:
                     acc=f"{float(total_correct) / total_samples:.4f}",
                 )
 
-        # Handle any remaining gradients from the final incomplete accumulation cycle
         if len(loader) % self.accum_steps != 0:
             self.scaler.unscale_(self.optimizer)
             nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_norm)
@@ -546,7 +516,7 @@ class Trainer:
         total_loss = 0.0
         total_correct = 0
         total_samples = 0
-        class_correct = class_count = None   # per-class tallies, sized lazily
+        class_correct = class_count = None
 
         for images, labels in tqdm(loader, desc="Val", leave=False):
             images = images.to(self.device, non_blocking=True)
@@ -579,7 +549,7 @@ class Trainer:
         """Restore model weights from the best saved checkpoint."""
         best = self.ckpt_manager.best_checkpoint()
         if best is None:
-            logger.warning("No checkpoint found — model weights unchanged.")
+            logger.warning("No checkpoint found - model weights unchanged.")
             return
         state = torch.load(best, map_location=self.device, weights_only=False)
         self.model.load_state_dict(state["model_state_dict"])

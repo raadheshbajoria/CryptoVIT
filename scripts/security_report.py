@@ -19,14 +19,12 @@ Metrics, averaged over the images (all on 28x28 RGB test images):
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 SCHEMES = ["v1", "block2"]
 LABELS = {"v1": "per-pixel (v1)", "block2": "block (2x2)"}
@@ -52,19 +50,36 @@ def mixture_distance(plain: np.ndarray, enc: np.ndarray) -> float:
     return float(0.5 * np.abs(he - mixture).sum())
 
 
-def measure_scheme(images: Sequence[np.ndarray], scheme: str, key: str,
-                   trials: int = 5) -> Dict[str, float]:
+def measure_scheme(
+    images: Sequence[np.ndarray], scheme: str, key: str, trials: int = 5
+) -> Dict[str, float]:
     from cryptovit.encryption import encrypt
     from cryptovit.evaluation.security_metrics import (
-        adjacent_pixel_correlation, compute_entropy, expected_uniform_entropy,
-        key_sensitivity, plaintext_sensitivity)
+        adjacent_pixel_correlation,
+        compute_entropy,
+        expected_uniform_entropy,
+        key_sensitivity,
+        plaintext_sensitivity,
+    )
 
     def enc(img, k):
         return encrypt(img, k, scheme=scheme)[0]
 
-    rows: Dict[str, List[float]] = {k: [] for k in (
-        "entropy", "entropy_ref", "corr_plain", "corr_enc", "key_npcr", "key_uaci",
-        "pt_npcr", "pt_uaci", "hist_tv", "hist_mix")}
+    rows: Dict[str, List[float]] = {
+        k: []
+        for k in (
+            "entropy",
+            "entropy_ref",
+            "corr_plain",
+            "corr_enc",
+            "key_npcr",
+            "key_uaci",
+            "pt_npcr",
+            "pt_uaci",
+            "hist_tv",
+            "hist_mix",
+        )
+    }
     for img in images:
         e = enc(img, key)
         rows["entropy"].append(compute_entropy(e)["overall"])
@@ -101,11 +116,18 @@ def build_markdown(results: Dict[str, Dict[str, float]], n_images: int) -> str:
         row("Adjacent-pixel correlation, encrypted (0 is ideal)", "{:.2f}", "corr_enc"),
         row("Key sensitivity NPCR (%) - key differs by one bit", "{:.1f}", "key_npcr"),
         row("Key sensitivity UACI (%) - ideal about 33.5", "{:.1f}", "key_uaci"),
-        row("Plaintext sensitivity NPCR (%) - one pixel changed, ideal about 99.6", "{:.2f}", "pt_npcr"),
+        row(
+            "Plaintext sensitivity NPCR (%) - one pixel changed, ideal about 99.6",
+            "{:.2f}",
+            "pt_npcr",
+        ),
         row("Plaintext sensitivity UACI (%) - ideal about 33.5", "{:.2f}", "pt_uaci"),
         row("Histogram distance plaintext vs encrypted (0 = identical)", "{:.2f}", "hist_tv"),
-        row("Histogram distance to the plaintext-or-inverted mixture (0 = same palette up to inversion)",
-            "{:.2f}", "hist_mix"),
+        row(
+            "Histogram distance to the plaintext-or-inverted mixture (0 = same palette up to inversion)",
+            "{:.2f}",
+            "hist_mix",
+        ),
         "",
         "## How to read this",
         "",
@@ -128,17 +150,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Measure the encryption schemes and write SECURITY.md.")
     p.add_argument("--n", type=int, default=100, help="number of test images")
     p.add_argument("--key", default="CryptoViT_Research_Key_2025")
-    p.add_argument("--out", default="SECURITY.md")
+    p.add_argument("--out", default="docs/SECURITY.md")
     args = p.parse_args(argv)
 
     from cryptovit.datasets.medmnist_dataset import load_medmnist_splits
-    test = load_medmnist_splits("dermamnist", PROJECT_ROOT / "data/raw/medmnist", 28,
-                                download=False)[2]
+
+    test = load_medmnist_splits(
+        "dermamnist", PROJECT_ROOT / "data/raw/medmnist", 28, download=False
+    )[2]
     rng = np.random.default_rng(0)
     idx = rng.choice(len(test), size=min(args.n, len(test)), replace=False)
     images = [np.array(test[int(i)][0]) for i in idx]
     results = {s: measure_scheme(images, s, args.key) for s in SCHEMES}
-    (PROJECT_ROOT / args.out).write_text(build_markdown(results, len(images)), encoding="utf-8")
+    out_path = PROJECT_ROOT / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(build_markdown(results, len(images)), encoding="utf-8")
     print(f"Wrote {args.out}")
     return 0
 

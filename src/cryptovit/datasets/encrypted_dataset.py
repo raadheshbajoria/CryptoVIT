@@ -1,7 +1,7 @@
 """
 cryptovit/datasets/encrypted_dataset.py
 =========================================
-Encrypted CIFAR dataset for CryptoViT Phases 7–11.
+Encrypted CIFAR dataset for CryptoViT Phases 7-11.
 
 Two modes of operation
 ---------------------
@@ -55,10 +55,6 @@ from cryptovit.encryption import encrypt
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# EncryptedCIFARDataset
-# ---------------------------------------------------------------------------
-
 class EncryptedCIFARDataset(Dataset):
     """Wraps a CIFAR torchvision dataset and serves encrypted images.
 
@@ -104,14 +100,8 @@ class EncryptedCIFARDataset(Dataset):
 
         if mode == "precomputed":
             if self.encrypted_dir is None:
-                raise ValueError(
-                    "encrypted_dir must be provided when mode='precomputed'"
-                )
+                raise ValueError("encrypted_dir must be provided when mode='precomputed'")
             self._encrypted_images, self._labels = self._load_precomputed()
-
-    # ------------------------------------------------------------------
-    # Dataset protocol
-    # ------------------------------------------------------------------
 
     def __len__(self) -> int:
         return len(self.base_dataset)
@@ -120,9 +110,7 @@ class EncryptedCIFARDataset(Dataset):
         if self.mode == "online":
             img_pil, label = self.base_dataset[idx]
             img_np = _pil_to_uint8(img_pil)
-            enc_np, _ = encrypt(
-                img_np, self.key, self.transient_steps, scheme=self.scheme
-            )
+            enc_np, _ = encrypt(img_np, self.key, self.transient_steps, scheme=self.scheme)
         else:
             enc_np = self._encrypted_images[idx]
             label = int(self._labels[idx])
@@ -136,10 +124,6 @@ class EncryptedCIFARDataset(Dataset):
 
         return enc_tensor, label
 
-    # ------------------------------------------------------------------
-    # Pre-generation
-    # ------------------------------------------------------------------
-
     def _load_precomputed(self):
         """Load pre-generated encrypted images from disk."""
         images_path = self.encrypted_dir / "images.npy"
@@ -151,14 +135,13 @@ class EncryptedCIFARDataset(Dataset):
             )
         images = np.load(str(images_path))
         labels = np.load(str(labels_path))
-        logger.info("Loaded pre-generated encrypted dataset from %s (%d samples).",
-                    self.encrypted_dir, len(images))
+        logger.info(
+            "Loaded pre-generated encrypted dataset from %s (%d samples).",
+            self.encrypted_dir,
+            len(images),
+        )
         return images, labels
 
-
-# ---------------------------------------------------------------------------
-# Dataset generation script helper
-# ---------------------------------------------------------------------------
 
 def generate_encrypted_dataset(
     base_dataset: Dataset,
@@ -186,9 +169,8 @@ def generate_encrypted_dataset(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     n = len(base_dataset)
-    logger.info("Generating encrypted dataset (%d samples) → %s", n, save_dir)
+    logger.info("Generating encrypted dataset (%d samples) -> %s", n, save_dir)
 
-    # Get shape from first sample
     img0, _ = base_dataset[0]
     img0_np = _pil_to_uint8(img0)
     enc0, _ = encrypt(img0_np, key, transient_steps, scheme=scheme)
@@ -207,10 +189,6 @@ def generate_encrypted_dataset(
     np.save(str(save_dir / "labels.npy"), labels)
     logger.info("Saved encrypted dataset to %s.", save_dir)
 
-
-# ---------------------------------------------------------------------------
-# Encrypted data loaders (shared split, no test-set leakage)
-# ---------------------------------------------------------------------------
 
 def compute_encrypted_stats(
     base_dataset: Dataset,
@@ -236,10 +214,10 @@ def compute_encrypted_stats(
         enc, _ = encrypt(_pil_to_uint8(img), key, transient_steps, scheme=scheme)
         px = enc.reshape(-1, enc.shape[-1]).astype(np.float64) / 255.0
         total += px.sum(axis=0)
-        total_sq += (px ** 2).sum(axis=0)
+        total_sq += (px**2).sum(axis=0)
         count += px.shape[0]
     mean = total / count
-    std = np.sqrt(np.maximum(total_sq / count - mean ** 2, 1e-12))
+    std = np.sqrt(np.maximum(total_sq / count - mean**2, 1e-12))
     return {"mean": mean.tolist(), "std": std.tolist()}
 
 
@@ -251,11 +229,13 @@ def build_encrypted_transform(
     No random crop or flip: those operations on ciphertext do not correspond
     to any plaintext augmentation and only inject noise.
     """
-    return transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=list(mean), std=list(std)),
-    ])
+    return transforms.Compose(
+        [
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=list(mean), std=list(std)),
+        ]
+    )
 
 
 def build_encrypted_loaders(
@@ -282,58 +262,61 @@ def build_encrypted_loaders(
     arrays) and labels.
     """
     if base_val is None:
-        train_idx, val_idx = get_split_indices(
-            len(base_train), cfg.dataset.train_split, seed
-        )
+        train_idx, val_idx = get_split_indices(len(base_train), cfg.dataset.train_split, seed)
     else:
         train_idx, val_idx = list(range(len(base_train))), None
     scheme = cfg.encryption.get("scheme", "v1")
     stats = compute_encrypted_stats(
-        base_train, key, train_idx,
-        transient_steps=cfg.encryption.transient_steps, scheme=scheme,
+        base_train,
+        key,
+        train_idx,
+        transient_steps=cfg.encryption.transient_steps,
+        scheme=scheme,
     )
-    transform = build_encrypted_transform(
-        cfg.dataset.image_size, stats["mean"], stats["std"]
-    )
+    transform = build_encrypted_transform(cfg.dataset.image_size, stats["mean"], stats["std"])
     kwargs = dict(
-        key=key, mode="online", transform=transform,
-        transient_steps=cfg.encryption.transient_steps, scheme=scheme,
+        key=key,
+        mode="online",
+        transform=transform,
+        transient_steps=cfg.encryption.transient_steps,
+        scheme=scheme,
     )
     enc_train = EncryptedCIFARDataset(base_train, **kwargs)
     enc_test = EncryptedCIFARDataset(base_test, **kwargs)
 
-    loader_kwargs = dict(
-        num_workers=cfg.dataset.num_workers, pin_memory=cfg.dataset.pin_memory
-    )
+    loader_kwargs = dict(num_workers=cfg.dataset.num_workers, pin_memory=cfg.dataset.pin_memory)
     train_loader = DataLoader(
         Subset(enc_train, train_idx),
-        batch_size=cfg.training.batch_size, shuffle=True, drop_last=True,
+        batch_size=cfg.training.batch_size,
+        shuffle=True,
+        drop_last=True,
         generator=torch.Generator().manual_seed(seed),
-        # Keep workers alive between epochs (Windows re-spawns them otherwise).
-        persistent_workers=cfg.dataset.num_workers > 0, **loader_kwargs,
+        persistent_workers=cfg.dataset.num_workers > 0,
+        **loader_kwargs,
     )
     val_dataset = (
-        Subset(enc_train, val_idx) if base_val is None
+        Subset(enc_train, val_idx)
+        if base_val is None
         else EncryptedCIFARDataset(base_val, **kwargs)
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=cfg.evaluation.batch_size, shuffle=False, **loader_kwargs,
+        batch_size=cfg.evaluation.batch_size,
+        shuffle=False,
+        **loader_kwargs,
     )
     test_loader = DataLoader(
-        enc_test, batch_size=cfg.evaluation.batch_size, shuffle=False,
+        enc_test,
+        batch_size=cfg.evaluation.batch_size,
+        shuffle=False,
         **loader_kwargs,
     )
     return train_loader, val_loader, test_loader
 
 
-# ---------------------------------------------------------------------------
-# Internal helper
-# ---------------------------------------------------------------------------
-
 def _pil_to_uint8(img) -> np.ndarray:
     """Convert PIL Image or tensor to HWC uint8 numpy array."""
-    if hasattr(img, "numpy"):           # torch.Tensor
+    if hasattr(img, "numpy"):
         arr = img.numpy()
         if arr.ndim == 3 and arr.shape[0] in (1, 3):
             arr = arr.transpose(1, 2, 0)

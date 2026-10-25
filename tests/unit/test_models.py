@@ -6,7 +6,6 @@ Unit tests for CryptoViT, patch embedding variants, and positional encodings.
 
 from __future__ import annotations
 
-import pytest
 import torch
 from omegaconf import OmegaConf
 
@@ -127,25 +126,27 @@ class TestCryptoViT:
         assert model.num_parameters() > 0
 
     def test_build_cryptovit_via_factory(self):
-        cfg = OmegaConf.create({
-            "model": {
-                "name": "cryptovit",
-                "image_size": 32,
-                "patch_size": 8,
-                "in_channels": 3,
-                "num_classes": 10,
-                "embed_dim": 48,
-                "depth": 2,
-                "num_heads": 3,
-                "mlp_ratio": 2.0,
-                "dropout": 0.0,
-                "attn_dropout": 0.0,
-                "drop_path_rate": 0.0,
-                "pool": "cls",
-                "hidden_dim": 32,
-                "key_embed_dim": 64,
+        cfg = OmegaConf.create(
+            {
+                "model": {
+                    "name": "cryptovit",
+                    "image_size": 32,
+                    "patch_size": 8,
+                    "in_channels": 3,
+                    "num_classes": 10,
+                    "embed_dim": 48,
+                    "depth": 2,
+                    "num_heads": 3,
+                    "mlp_ratio": 2.0,
+                    "dropout": 0.0,
+                    "attn_dropout": 0.0,
+                    "drop_path_rate": 0.0,
+                    "pool": "cls",
+                    "hidden_dim": 32,
+                    "key_embed_dim": 64,
+                }
             }
-        })
+        )
         model = build_cryptovit(cfg)
         assert isinstance(model, CryptoViT)
 

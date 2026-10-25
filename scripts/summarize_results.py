@@ -96,9 +96,13 @@ def build_markdown(runs: Sequence[Tuple[str, Dict[str, Dict]]]) -> str:
                 lines.append(_row(scheme, variant, results[variant], melanoma_idx))
 
     if class_names:
-        lines += ["", "## Per-class sensitivity", "",
-                  "| Encryption | Variant | " + " | ".join(class_names) + " |",
-                  "|---|---|" + "---|" * len(class_names)]
+        lines += [
+            "",
+            "## Per-class sensitivity",
+            "",
+            "| Encryption | Variant | " + " | ".join(class_names) + " |",
+            "|---|---|" + "---|" * len(class_names),
+        ]
         plaintext_done = False
         for scheme, results in runs:
             order = [("none (plaintext)", "A")] if "A" in results and not plaintext_done else []
@@ -128,20 +132,29 @@ def build_markdown(runs: Sequence[Tuple[str, Dict[str, Dict]]]) -> str:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Write RESULTS.md from saved results.")
-    p.add_argument("--run", action="append", default=None, metavar="LABEL=DIR",
-                   help="encryption label and experiments dir (repeatable)")
-    p.add_argument("--out", default="RESULTS.md")
+    p.add_argument(
+        "--run",
+        action="append",
+        default=None,
+        metavar="LABEL=DIR",
+        help="encryption label and experiments dir (repeatable)",
+    )
+    p.add_argument("--out", default="docs/RESULTS.md")
     args = p.parse_args(argv)
 
-    specs = args.run or ["per-pixel (v1)=experiments/dermamnist",
-                         "block2=experiments/dermamnist_block2"]
+    specs = args.run or [
+        "per-pixel (v1)=experiments/dermamnist",
+        "block2=experiments/dermamnist_block2",
+    ]
     runs = []
     for spec in specs:
         label, _, directory = spec.partition("=")
         if not directory:
             raise SystemExit(f"--run must look like LABEL=DIR, got '{spec}'")
         runs.append((label, load_results(PROJECT_ROOT / directory / "ablation")))
-    (PROJECT_ROOT / args.out).write_text(build_markdown(runs), encoding="utf-8")
+    out_path = PROJECT_ROOT / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(build_markdown(runs), encoding="utf-8")
     print(f"Wrote {args.out}")
     return 0
 

@@ -9,9 +9,9 @@ a more robust mapping from encrypted patch representations.
 
 Design
 ------
-* ``StandardPatchEmbedding``  — identical to the one in vit.py; re-exported
+* ``StandardPatchEmbedding``  - identical to the one in vit.py; re-exported
   here for clarity and for use in ablation experiments.
-* ``CryptoPatchEmbedding``    — uses a small convolutional front-end
+* ``CryptoPatchEmbedding``    - uses a small convolutional front-end
   before the linear projection.  The extra convolutions give the model
   capacity to handle the statistical properties of encrypted patches,
   which have higher entropy and lower spatial correlation than plaintext.
@@ -31,10 +31,6 @@ from einops import rearrange
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Standard patch embedding (re-export for convenience)
-# ---------------------------------------------------------------------------
 
 class StandardPatchEmbedding(nn.Module):
     """Standard ViT patch embedding: Conv2d(in_channels, embed_dim, patch_size).
@@ -57,19 +53,17 @@ class StandardPatchEmbedding(nn.Module):
         self.num_patches = (image_size // patch_size) ** 2
 
         self.projection = nn.Conv2d(
-            in_channels, embed_dim,
-            kernel_size=patch_size, stride=patch_size,
+            in_channels,
+            embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, H, W) → (B, N, embed_dim)"""
+        """(B, C, H, W) -> (B, N, embed_dim)"""
         x = self.projection(x)
         return rearrange(x, "b d h w -> b (h w) d")
 
-
-# ---------------------------------------------------------------------------
-# Crypto Patch Embedding
-# ---------------------------------------------------------------------------
 
 class CryptoPatchEmbedding(nn.Module):
     """Custom patch embedding adapted for encrypted / high-entropy images.
@@ -112,7 +106,6 @@ class CryptoPatchEmbedding(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (image_size // patch_size) ** 2
 
-        # Convolutional front-end (within-patch feature extraction)
         self.conv_front = nn.Sequential(
             nn.Conv2d(in_channels, hidden_dim, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(hidden_dim),
@@ -122,13 +115,13 @@ class CryptoPatchEmbedding(nn.Module):
             nn.GELU(),
         )
 
-        # Patch projection: same as standard but on hidden features
         self.projection = nn.Conv2d(
-            hidden_dim, embed_dim,
-            kernel_size=patch_size, stride=patch_size,
+            hidden_dim,
+            embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
         )
 
-        # Weight initialisation
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
@@ -138,11 +131,14 @@ class CryptoPatchEmbedding(nn.Module):
 
         logger.info(
             "CryptoPatchEmbedding | patch=%d  hidden=%d  embed=%d  patches=%d",
-            patch_size, hidden_dim, embed_dim, self.num_patches,
+            patch_size,
+            hidden_dim,
+            embed_dim,
+            self.num_patches,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, C, H, W) → (B, N, embed_dim)"""
-        x = self.conv_front(x)      # (B, hidden_dim, H, W)
-        x = self.projection(x)      # (B, embed_dim, H/P, W/P)
+        """(B, C, H, W) -> (B, N, embed_dim)"""
+        x = self.conv_front(x)
+        x = self.projection(x)
         return rearrange(x, "b d h w -> b (h w) d")

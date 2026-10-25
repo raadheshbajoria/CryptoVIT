@@ -2,14 +2,14 @@
 """
 scripts/run_ablation.py
 =========================
-Phase 12 — Ablation study: train and evaluate 4 model variants.
+Ablation study: train and evaluate 4 model variants.
 
 Variants
 --------
-A — Standard ViT + plaintext images
-B — Standard ViT + encrypted images (standard patch embedding)
-C — Standard ViT + encrypted images + CryptoPatchEmbedding
-D — CryptoViT: C + KeyAwarePositionalEncoding, trained and evaluated with the
+A - Standard ViT + plaintext images
+B - Standard ViT + encrypted images (standard patch embedding)
+C - Standard ViT + encrypted images + CryptoPatchEmbedding
+D - CryptoViT: C + KeyAwarePositionalEncoding, trained and evaluated with the
     key embedding derived from the encryption key
 
 Protocol
@@ -23,13 +23,14 @@ Protocol
 * C differs from D only by the key-aware positional offset, so D vs C
   isolates what the key embedding adds.
 
-Results are saved to experiments/ablation/ablation_results.json.
+Each variant's result is saved as <experiments_dir>/ablation/result_<variant>.json
+and training is resumable (finished variants are skipped on a rerun).
 
 Usage
 -----
-    python scripts/run_ablation.py
-    python scripts/run_ablation.py training.epochs=30
-    python scripts/run_ablation.py ablation.variants=A,D
+    python scripts/run_ablation.py config=dermamnist
+    python scripts/run_ablation.py config=dermamnist training.epochs=30
+    python scripts/run_ablation.py config=dermamnist ablation.variants=A,D
 """
 
 from __future__ import annotations
@@ -39,9 +40,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 import torch
 import torch.nn as nn
@@ -67,16 +65,11 @@ from cryptovit.utils.seed import set_seed
 
 logger = logging.getLogger(__name__)
 
-# Encryption key for ablation study
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ENCRYPTION_KEY = "CryptoViT_Research_Key_2025"
 KEY_EMBED_DIM = 256
 ALL_VARIANTS = ["A", "B", "C", "D"]
 
-# CryptoPatchEmbedding runs 3x3 convolutions on the full 224x224 image. Measured
-# on the 4 GB RTX 3050 with AMP: batch 32 -> 1.75 GB (0.15 s/step); batch 64 ->
-# 3.4 GB and batch 128 -> 6.7 GB, which spill into shared memory and run 10-70x
-# slower. C and D therefore use micro-batches of 32 with gradient accumulation,
-# keeping the effective batch size identical to A and B.
 CRYPTO_EMBED_MAX_MICRO_BATCH = 32
 CRYPTO_EMBED_VARIANTS = ("C", "D")
 
@@ -92,45 +85,37 @@ def _variant_cfg(variant: str, cfg):
         )
         cfg.training.batch_size = micro
         cfg.training.accumulation_steps = accum
-        # Evaluation also runs the full-resolution convolutions: batch 256 needs
-        # ~6.5 GB (measured) and overflows a 4 GB GPU. Batch size does not change
-        # the evaluation result.
-        cfg.evaluation.batch_size = min(
-            cfg.evaluation.batch_size, CRYPTO_EMBED_MAX_MICRO_BATCH
-        )
+        cfg.evaluation.batch_size = min(cfg.evaluation.batch_size, CRYPTO_EMBED_MAX_MICRO_BATCH)
     return cfg
 
 
 def _build_variant(name: str, cfg, device) -> nn.Module:
     """Build the model for a given ablation variant."""
     common = dict(
-        image_size  = cfg.model.image_size,
-        patch_size  = cfg.model.patch_size,
-        in_channels = cfg.model.in_channels,
-        num_classes = cfg.model.num_classes,
-        embed_dim   = cfg.model.embed_dim,
-        depth       = cfg.model.depth,
-        num_heads   = cfg.model.num_heads,
-        mlp_ratio   = cfg.model.mlp_ratio,
-        dropout     = cfg.model.dropout,
-        attn_dropout= cfg.model.attn_dropout,
-        drop_path_rate = cfg.model.drop_path_rate,
-        pool        = cfg.model.pool,
+        image_size=cfg.model.image_size,
+        patch_size=cfg.model.patch_size,
+        in_channels=cfg.model.in_channels,
+        num_classes=cfg.model.num_classes,
+        embed_dim=cfg.model.embed_dim,
+        depth=cfg.model.depth,
+        num_heads=cfg.model.num_heads,
+        mlp_ratio=cfg.model.mlp_ratio,
+        dropout=cfg.model.dropout,
+        attn_dropout=cfg.model.attn_dropout,
+        drop_path_rate=cfg.model.drop_path_rate,
+        pool=cfg.model.pool,
     )
 
     if name in ("A", "B"):
-        # Standard ViT (plaintext or encrypted, standard embedding)
         return VisionTransformer(**common)
 
     elif name == "C":
-        # Encrypted + CryptoPatchEmbedding
         return VisionTransformer(
             **common,
             patch_embedding_cls=CryptoPatchEmbedding,
         )
 
     elif name == "D":
-        # CryptoViT: CryptoPatchEmbedding + KeyAwarePositionalEncoding
         return CryptoViT(
             **common,
             hidden_dim=64,
@@ -150,36 +135,35 @@ def _get_loaders(variant: str, cfg, data_root: Path):
         return get_dataloaders(cfg, data_root=data_root, seed=cfg.project.seed)
 
     if is_medmnist(cfg.dataset.name):
-        # Official MedMNIST splits: train whole, separate validation set.
         train_b, val_b, test_b = load_medmnist_splits(
-            cfg.dataset.name, data_root / "medmnist",
+            cfg.dataset.name,
+            data_root / "medmnist",
             size=int(cfg.dataset.get("medmnist_size", 28)),
         )
         return build_encrypted_loaders(
             cfg, train_b, test_b, ENCRYPTION_KEY, seed=cfg.project.seed, base_val=val_b
         )
 
-    cls =datasets.CIFAR10 if cfg.dataset.name == "cifar10" else datasets.CIFAR100
+    cls = datasets.CIFAR10 if cfg.dataset.name == "cifar10" else datasets.CIFAR100
     base_train = cls(root=str(data_root), train=True, transform=None, download=False)
-    base_test  = cls(root=str(data_root), train=False, transform=None, download=False)
+    base_test = cls(root=str(data_root), train=False, transform=None, download=False)
     return build_encrypted_loaders(
         cfg, base_train, base_test, ENCRYPTION_KEY, seed=cfg.project.seed
     )
 
 
-def run_variant(
-    variant: str, cfg, device: torch.device, exp_dir: Path, loaders=None
-) -> dict:
+def run_variant(variant: str, cfg, device: torch.device, exp_dir: Path, loaders=None) -> dict:
     """Train and evaluate one ablation variant.
 
     ``loaders`` is an optional pre-built ``(train, val, test)`` tuple (used by
     tests with synthetic data); by default the real CIFAR loaders are built.
     """
-    logger.info("\n%s\nVariant %s\n%s", "="*50, variant, "="*50)
+    logger.info("\n%s\nVariant %s\n%s", "=" * 50, variant, "=" * 50)
     cfg = _variant_cfg(variant, cfg)
     logger.info(
         "Batching: micro-batch=%d x accumulation=%d (effective %d)",
-        cfg.training.batch_size, cfg.training.accumulation_steps,
+        cfg.training.batch_size,
+        cfg.training.accumulation_steps,
         cfg.training.batch_size * cfg.training.accumulation_steps,
     )
     set_seed(cfg.project.seed)
@@ -190,29 +174,32 @@ def run_variant(
     train_l, val_l, test_l = loaders
     model = _build_variant(variant, cfg, device)
 
-    # Variant D is trained and evaluated with the key embedding of the
-    # encryption key; no other variant receives one.
     key_embedding = (
         KeyAwarePositionalEncoding.key_to_embedding(ENCRYPTION_KEY, KEY_EMBED_DIM)
-        if variant == "D" else None
+        if variant == "D"
+        else None
     )
 
     var_dir = exp_dir / f"variant_{variant}"
     trainer = Trainer(
-        model, cfg, device, var_dir, key_embedding=key_embedding,
+        model,
+        cfg,
+        device,
+        var_dir,
+        key_embedding=key_embedding,
         class_weights=build_class_weights(cfg, train_l),
     )
     t0 = time.time()
-    # resume=True continues an interrupted run from checkpoints/last.pt
     history = trainer.fit(train_l, val_l, resume=True)
     train_time = time.time() - t0
 
     trainer.load_best_checkpoint()
 
-    # Test set is touched exactly once, after model selection on validation.
     use_amp = cfg.training.mixed_precision and device.type == "cuda"
     results = evaluate_model(
-        model, test_l, device,
+        model,
+        test_l,
+        device,
         use_amp=use_amp,
         class_names=get_class_names(cfg.dataset.name),
         num_classes=cfg.dataset.num_classes,
@@ -268,13 +255,8 @@ def main() -> None:
             all_results[variant] = json.loads(result_path.read_text())
             continue
 
-        # Start every variant from a clean GPU: memory kept by the previous
-        # variant can overflow the 4 GB card, and the overflow is silently paged
-        # to system RAM, which made training ~10x slower.
         _free_gpu_memory(device)
 
-        # One automatic retry: run_variant resumes from checkpoints/last.pt,
-        # so a transient failure costs at most one epoch.
         for attempt in (1, 2):
             try:
                 results = run_variant(variant, cfg, device, exp_dir)
@@ -282,35 +264,38 @@ def main() -> None:
                 all_results[variant] = results
                 break
             except Exception as exc:
-                logger.error("Variant %s failed (attempt %d/2): %s",
-                             variant, attempt, exc, exc_info=True)
+                logger.error(
+                    "Variant %s failed (attempt %d/2): %s", variant, attempt, exc, exc_info=True
+                )
                 if device.type == "cuda":
                     torch.cuda.empty_cache()
                 if attempt == 2:
                     all_results[variant] = {"error": str(exc)}
 
-    # Save combined results
     out_path = exp_dir / "ablation_results.json"
     with open(out_path, "w") as f:
         json.dump(all_results, f, indent=2)
     logger.info("Ablation results saved to %s", out_path)
 
-    # Print summary table
-    print("\n" + "="*70)
-    print(f"  {'Variant':<9} {'Test Acc':>9} {'Bal.Acc':>9} {'AUC':>7} "
-          f"{'Best Val':>9} {'Time (min)':>11}")
-    print("  " + "-"*60)
+    print("\n" + "=" * 70)
+    print(
+        f"  {'Variant':<9} {'Test Acc':>9} {'Bal.Acc':>9} {'AUC':>7} "
+        f"{'Best Val':>9} {'Time (min)':>11}"
+    )
+    print("  " + "-" * 60)
     for v, r in all_results.items():
         if "error" in r:
             print(f"  {v:<9}  ERROR: {r['error'][:50]}")
         else:
             auc = r.get("auc_macro_ovr")
             auc_s = f"{auc:>7.4f}" if auc is not None else f"{'n/a':>7}"
-            print(f"  {v:<9} {r.get('accuracy', 0):>9.4f} "
-                  f"{r.get('balanced_accuracy', 0):>9.4f} {auc_s} "
-                  f"{r.get('best_val_score', r.get('best_val_acc', 0)):>9.4f} "
-                  f"{r.get('train_time_s', 0) / 60:>11.1f}")
-    print("="*70 + "\n")
+            print(
+                f"  {v:<9} {r.get('accuracy', 0):>9.4f} "
+                f"{r.get('balanced_accuracy', 0):>9.4f} {auc_s} "
+                f"{r.get('best_val_score', r.get('best_val_acc', 0)):>9.4f} "
+                f"{r.get('train_time_s', 0) / 60:>11.1f}"
+            )
+    print("=" * 70 + "\n")
 
 
 if __name__ == "__main__":

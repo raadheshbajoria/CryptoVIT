@@ -45,7 +45,7 @@ scrambling decides it.
 
 Start it with `python scripts/start_demo.py --block 2` (uses the block-scheme models).
 
-1. In the sidebar dropdown pick `1_safe_melanoma_test846`. The original appears enlarged.
+1. Upload `demo_images/1_safe_melanoma_test846.png` in the dashboard. The original appears enlarged.
 2. Point at the encrypted image: the lesion is unrecognisable. Mention the key hash under it.
 3. Read the table. For this image all four models say melanoma: plaintext A 62%, and the three that
    only saw the encrypted image B 57%, C 50%, D 65% ("All trained models agree" appears under the
@@ -55,7 +55,7 @@ Start it with `python scripts/start_demo.py --block 2` (uses the block-scheme mo
    as a different scrambled mosaic of the same colours (not pure noise, but unrecognisable).
 6. Optional: tick "Also classify with the wrong key" in the sidebar to show that the encrypted-image
    models then become unreliable.
-7. If asked for a failure, pick `9_failure_basal_cell_carcinoma_test1214`: the plaintext model is
+7. If asked for a failure, upload `demo_images/9_failure_basal_cell_carcinoma_test1214.png`: the plaintext model is
    right, the block-encrypted model is wrong. Better that you show it than they find it.
 
 Offline backup: the enlarged pictures in `presentation/` and a screen recording of steps 1-5.

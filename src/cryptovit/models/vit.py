@@ -3,14 +3,14 @@ cryptovit/models/vit.py
 =======================
 From-scratch Vision Transformer (ViT) implementation.
 
-Architecture follows Dosovitskiy et al. (2021) "An Image is Worth 16×16 Words"
+Architecture follows Dosovitskiy et al. (2021) "An Image is Worth 16x16 Words"
 with minor adaptations for CIFAR-scale experiments:
   * Pre-LN (LayerNorm before attention and MLP) for training stability.
   * Learnable 1-D positional embeddings.
   * [CLS] token classification head.
   * Drop-path (stochastic depth) regularisation.
 
-All components are pure PyTorch — no timm dependency in this module.
+All components are pure PyTorch - no timm dependency in this module.
 
 Usage
 -----
@@ -31,10 +31,6 @@ from einops import rearrange
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Drop-path (stochastic depth) — training regulariser
-# ---------------------------------------------------------------------------
-
 class DropPath(nn.Module):
     """Per-sample drop-path (stochastic depth) regularisation.
 
@@ -50,7 +46,6 @@ class DropPath(nn.Module):
         if self.drop_prob == 0.0 or not self.training:
             return x
         keep_prob = 1 - self.drop_prob
-        # Shape: (B, 1, 1) for broadcasting over sequence / channel dims
         shape = (x.shape[0],) + (1,) * (x.ndim - 1)
         random_tensor = torch.rand(shape, dtype=x.dtype, device=x.device)
         random_tensor = torch.floor(random_tensor + keep_prob)
@@ -59,10 +54,6 @@ class DropPath(nn.Module):
     def extra_repr(self) -> str:
         return f"drop_prob={self.drop_prob:.3f}"
 
-
-# ---------------------------------------------------------------------------
-# Patch Embedding
-# ---------------------------------------------------------------------------
 
 class PatchEmbedding(nn.Module):
     """Divide an image into non-overlapping patches and project each patch.
@@ -95,10 +86,11 @@ class PatchEmbedding(nn.Module):
         self.num_patches = (image_size // patch_size) ** 2
         self.patch_dim = in_channels * patch_size * patch_size
 
-        # Linear projection via Conv2d (equivalent to slicing patches + linear)
         self.projection = nn.Conv2d(
-            in_channels, embed_dim,
-            kernel_size=patch_size, stride=patch_size,
+            in_channels,
+            embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -111,16 +103,10 @@ class PatchEmbedding(nn.Module):
         -------
         tokens : (B, N, embed_dim)  where N = num_patches
         """
-        # (B, embed_dim, H/P, W/P)
         x = self.projection(x)
-        # (B, embed_dim, N_h * N_w) → (B, N, embed_dim)
         x = rearrange(x, "b d h w -> b (h w) d")
         return x
 
-
-# ---------------------------------------------------------------------------
-# Multi-Head Self-Attention
-# ---------------------------------------------------------------------------
 
 class MultiHeadSelfAttention(nn.Module):
     """Standard scaled dot-product multi-head self-attention.
@@ -150,7 +136,7 @@ class MultiHeadSelfAttention(nn.Module):
         )
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
-        self.scale = self.head_dim ** -0.5
+        self.scale = self.head_dim**-0.5
 
         self.qkv = nn.Linear(embed_dim, embed_dim * 3, bias=True)
         self.proj = nn.Linear(embed_dim, embed_dim)
@@ -168,27 +154,20 @@ class MultiHeadSelfAttention(nn.Module):
         out : (B, N, D)
         """
         B, N, D = x.shape
-        # Project to Q, K, V and split heads
-        qkv = self.qkv(x)                        # (B, N, 3D)
-        qkv = rearrange(qkv, "b n (three h d) -> three b h n d",
-                        three=3, h=self.num_heads)
-        q, k, v = qkv.unbind(0)                  # each: (B, H, N, head_dim)
+        qkv = self.qkv(x)
+        qkv = rearrange(qkv, "b n (three h d) -> three b h n d", three=3, h=self.num_heads)
+        q, k, v = qkv.unbind(0)
 
-        # Scaled dot-product attention
-        attn = (q @ k.transpose(-2, -1)) * self.scale  # (B, H, N, N)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        out = attn @ v                             # (B, H, N, head_dim)
+        out = attn @ v
         out = rearrange(out, "b h n d -> b n (h d)")
         out = self.proj(out)
         out = self.proj_drop(out)
         return out
 
-
-# ---------------------------------------------------------------------------
-# MLP Block
-# ---------------------------------------------------------------------------
 
 class MLP(nn.Module):
     """Two-layer MLP with GELU activation used inside transformer blocks.
@@ -229,15 +208,11 @@ class MLP(nn.Module):
         return x
 
 
-# ---------------------------------------------------------------------------
-# Transformer Block (Pre-LN)
-# ---------------------------------------------------------------------------
-
 class TransformerBlock(nn.Module):
     """Single transformer encoder block with pre-layer-norm.
 
-    Residual path:   x → LN → MHSA → DropPath → + x
-    Feed-forward:    x → LN → MLP  → DropPath → + x
+    Residual path:   x -> LN -> MHSA -> DropPath -> + x
+    Feed-forward:    x -> LN -> MLP  -> DropPath -> + x
 
     Parameters
     ----------
@@ -285,10 +260,6 @@ class TransformerBlock(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
-
-# ---------------------------------------------------------------------------
-# Vision Transformer
-# ---------------------------------------------------------------------------
 
 class VisionTransformer(nn.Module):
     """Vision Transformer (ViT) for image classification.
@@ -345,7 +316,6 @@ class VisionTransformer(nn.Module):
         self.pool = pool
         self.embed_dim = embed_dim
 
-        # Patch embedding
         patch_embedding_cls = patch_embedding_cls or PatchEmbedding
         self.patch_embed = patch_embedding_cls(
             image_size=image_size,
@@ -355,47 +325,42 @@ class VisionTransformer(nn.Module):
         )
         num_patches = self.patch_embed.num_patches
 
-        # [CLS] token and positional embeddings
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.pos_drop = nn.Dropout(p=dropout)
 
-        # Stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
 
-        # Transformer encoder
-        self.blocks = nn.ModuleList([
-            TransformerBlock(
-                embed_dim=embed_dim,
-                num_heads=num_heads,
-                mlp_ratio=mlp_ratio,
-                dropout=dropout,
-                attn_dropout=attn_dropout,
-                drop_path_rate=dpr[i],
-            )
-            for i in range(depth)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                TransformerBlock(
+                    embed_dim=embed_dim,
+                    num_heads=num_heads,
+                    mlp_ratio=mlp_ratio,
+                    dropout=dropout,
+                    attn_dropout=attn_dropout,
+                    drop_path_rate=dpr[i],
+                )
+                for i in range(depth)
+            ]
+        )
         self.norm = nn.LayerNorm(embed_dim, eps=1e-6)
 
-        # Classification head
         self.head = nn.Linear(embed_dim, num_classes)
 
-        # Weight initialisation
         self._init_weights()
 
         logger.info(
-            "VisionTransformer | image=%d patch=%d embed=%d depth=%d heads=%d "
-            "params=%.2fM",
-            image_size, patch_size, embed_dim, depth, num_heads,
+            "VisionTransformer | image=%d patch=%d embed=%d depth=%d heads=%d params=%.2fM",
+            image_size,
+            patch_size,
+            embed_dim,
+            depth,
+            num_heads,
             self.num_parameters() / 1e6,
         )
 
-    # ------------------------------------------------------------------
-    # Weight initialisation
-    # ------------------------------------------------------------------
-
     def _init_weights(self) -> None:
-        # Positional embeddings — sinusoidal-like initialisation
         nn.init.trunc_normal_(self.pos_embed, std=0.02)
         nn.init.trunc_normal_(self.cls_token, std=0.02)
 
@@ -412,10 +377,6 @@ class VisionTransformer(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    # ------------------------------------------------------------------
-    # Forward
-    # ------------------------------------------------------------------
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Parameters
@@ -428,34 +389,24 @@ class VisionTransformer(nn.Module):
         """
         B = x.shape[0]
 
-        # 1. Patch embedding: (B, C, H, W) → (B, N, D)
         x = self.patch_embed(x)
 
-        # 2. Prepend [CLS] token
         cls_tokens = self.cls_token.expand(B, -1, -1)
-        x = torch.cat([cls_tokens, x], dim=1)  # (B, N+1, D)
+        x = torch.cat([cls_tokens, x], dim=1)
 
-        # 3. Add positional embeddings
         x = x + self.pos_embed
         x = self.pos_drop(x)
 
-        # 4. Transformer encoder blocks
         for block in self.blocks:
             x = block(x)
         x = self.norm(x)
 
-        # 5. Pool
         if self.pool == "cls":
-            x = x[:, 0]          # [CLS] token
+            x = x[:, 0]
         else:
-            x = x[:, 1:].mean(dim=1)  # global average over patch tokens
+            x = x[:, 1:].mean(dim=1)
 
-        # 6. Classification head
         return self.head(x)
-
-    # ------------------------------------------------------------------
-    # Utilities
-    # ------------------------------------------------------------------
 
     def num_parameters(self) -> int:
         """Return total number of trainable parameters."""

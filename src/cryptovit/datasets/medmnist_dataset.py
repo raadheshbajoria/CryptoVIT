@@ -26,7 +26,6 @@ from torch.utils.data import DataLoader, Dataset
 
 logger = logging.getLogger(__name__)
 
-# name -> (class name in the medmnist package, number of classes)
 MEDMNIST_DATASETS: Dict[str, Tuple[str, int]] = {
     "dermamnist": ("DermaMNIST", 7),
     "pathmnist": ("PathMNIST", 9),
@@ -78,15 +77,12 @@ class MedMNISTAdapter(Dataset):
 def _medmnist_class(dataset_name: str):
     if dataset_name not in MEDMNIST_DATASETS:
         raise ValueError(
-            f"Unsupported MedMNIST dataset '{dataset_name}'. "
-            f"Choose from {list(MEDMNIST_DATASETS)}."
+            f"Unsupported MedMNIST dataset '{dataset_name}'. Choose from {list(MEDMNIST_DATASETS)}."
         )
     try:
         import medmnist
     except ImportError as exc:  # pragma: no cover - environment dependent
-        raise ImportError(
-            "The 'medmnist' package is required: pip install medmnist"
-        ) from exc
+        raise ImportError("The 'medmnist' package is required: pip install medmnist") from exc
     return getattr(medmnist, MEDMNIST_DATASETS[dataset_name][0])
 
 
@@ -109,14 +105,14 @@ def load_medmnist_splits(
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     splits = [
-        MedMNISTAdapter(
-            cls(split=s, root=str(root), size=size, download=download, transform=None)
-        )
+        MedMNISTAdapter(cls(split=s, root=str(root), size=size, download=download, transform=None))
         for s in ("train", "val", "test")
     ]
     logger.info(
         "MedMNIST '%s' (%dpx) | train=%d  val=%d  test=%d",
-        dataset_name, size, *(len(s) for s in splits),
+        dataset_name,
+        size,
+        *(len(s) for s in splits),
     )
     return tuple(splits)  # type: ignore[return-value]
 
@@ -128,7 +124,6 @@ def get_medmnist_dataloaders(
     seed: int = 42,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Train / val / test loaders using the *official* MedMNIST splits."""
-    # Imported here to avoid a circular import with cifar_dataset.
     from cryptovit.datasets.cifar_dataset import (
         build_eval_transform,
         build_train_transform,
@@ -147,14 +142,15 @@ def get_medmnist_dataloaders(
     val_ds = MedMNISTAdapter(val_base.base, eval_tf)
     test_ds = MedMNISTAdapter(test_base.base, eval_tf)
 
-    loader_kwargs = dict(
-        num_workers=cfg.dataset.num_workers, pin_memory=cfg.dataset.pin_memory
-    )
+    loader_kwargs = dict(num_workers=cfg.dataset.num_workers, pin_memory=cfg.dataset.pin_memory)
     train_loader = DataLoader(
-        train_ds, batch_size=cfg.training.batch_size, shuffle=True, drop_last=True,
+        train_ds,
+        batch_size=cfg.training.batch_size,
+        shuffle=True,
+        drop_last=True,
         generator=torch.Generator().manual_seed(seed),
-        # Keep workers alive between epochs (Windows re-spawns them otherwise).
-        persistent_workers=cfg.dataset.num_workers > 0, **loader_kwargs,
+        persistent_workers=cfg.dataset.num_workers > 0,
+        **loader_kwargs,
     )
     val_loader = DataLoader(
         val_ds, batch_size=cfg.evaluation.batch_size, shuffle=False, **loader_kwargs

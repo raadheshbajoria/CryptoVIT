@@ -13,10 +13,6 @@ import torch
 from omegaconf import OmegaConf
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _tiny_cfg(
     image_size: int = 32,
     patch_size: int = 8,
@@ -26,57 +22,53 @@ def _tiny_cfg(
     num_classes: int = 10,
     pool: str = "cls",
 ) -> OmegaConf:
-    return OmegaConf.create({
-        "model": {
-            "name": "vit_small",
-            "image_size": image_size,
-            "patch_size": patch_size,
-            "in_channels": 3,
-            "num_classes": num_classes,
-            "embed_dim": embed_dim,
-            "depth": depth,
-            "num_heads": num_heads,
-            "mlp_ratio": 2.0,
-            "dropout": 0.0,
-            "attn_dropout": 0.0,
-            "drop_path_rate": 0.0,
-            "pool": pool,
+    return OmegaConf.create(
+        {
+            "model": {
+                "name": "vit_small",
+                "image_size": image_size,
+                "patch_size": patch_size,
+                "in_channels": 3,
+                "num_classes": num_classes,
+                "embed_dim": embed_dim,
+                "depth": depth,
+                "num_heads": num_heads,
+                "mlp_ratio": 2.0,
+                "dropout": 0.0,
+                "attn_dropout": 0.0,
+                "drop_path_rate": 0.0,
+                "pool": pool,
+            }
         }
-    })
+    )
 
-
-# ---------------------------------------------------------------------------
-# PatchEmbedding
-# ---------------------------------------------------------------------------
 
 class TestPatchEmbedding:
     def test_output_shape(self):
         from cryptovit.models.vit import PatchEmbedding
+
         pe = PatchEmbedding(image_size=32, patch_size=8, in_channels=3, embed_dim=48)
         x = torch.randn(2, 3, 32, 32)
         out = pe(x)
-        # num_patches = (32/8)^2 = 16
         assert out.shape == (2, 16, 48), f"Got {out.shape}"
 
     def test_num_patches_224(self):
         from cryptovit.models.vit import PatchEmbedding
+
         pe = PatchEmbedding(image_size=224, patch_size=16, in_channels=3, embed_dim=192)
-        # (224/16)^2 = 196
         assert pe.num_patches == 196
 
     def test_invalid_patch_size_raises(self):
         from cryptovit.models.vit import PatchEmbedding
+
         with pytest.raises(AssertionError):
-            PatchEmbedding(image_size=32, patch_size=7)  # 32 % 7 != 0
+            PatchEmbedding(image_size=32, patch_size=7)
 
-
-# ---------------------------------------------------------------------------
-# MultiHeadSelfAttention
-# ---------------------------------------------------------------------------
 
 class TestMultiHeadSelfAttention:
     def test_output_shape(self):
         from cryptovit.models.vit import MultiHeadSelfAttention
+
         attn = MultiHeadSelfAttention(embed_dim=48, num_heads=3)
         x = torch.randn(2, 16, 48)
         out = attn(x)
@@ -84,45 +76,45 @@ class TestMultiHeadSelfAttention:
 
     def test_invalid_heads_raises(self):
         from cryptovit.models.vit import MultiHeadSelfAttention
+
         with pytest.raises(AssertionError):
-            MultiHeadSelfAttention(embed_dim=48, num_heads=7)  # 48 % 7 != 0
+            MultiHeadSelfAttention(embed_dim=48, num_heads=7)
 
-
-# ---------------------------------------------------------------------------
-# TransformerBlock
-# ---------------------------------------------------------------------------
 
 class TestTransformerBlock:
     def test_output_shape(self):
         from cryptovit.models.vit import TransformerBlock
+
         block = TransformerBlock(embed_dim=48, num_heads=3)
-        x = torch.randn(2, 17, 48)  # 16 patches + 1 CLS
+        x = torch.randn(2, 17, 48)
         out = block(x)
         assert out.shape == x.shape
 
     def test_residual_connection(self):
         """With zero weights the block should approximate identity."""
         from cryptovit.models.vit import TransformerBlock
+
         block = TransformerBlock(embed_dim=48, num_heads=3, drop_path_rate=0.0)
-        # Zero out all parameters
         for p in block.parameters():
             p.data.zero_()
         x = torch.randn(1, 5, 48)
         out = block(x)
-        # Output should equal input (residual) when weights are zero
         assert torch.allclose(out, x, atol=1e-5), "Residual connection broken"
 
-
-# ---------------------------------------------------------------------------
-# VisionTransformer
-# ---------------------------------------------------------------------------
 
 class TestVisionTransformer:
     def test_forward_shape_cls(self):
         from cryptovit.models.vit import VisionTransformer
+
         model = VisionTransformer(
-            image_size=32, patch_size=8, in_channels=3, num_classes=10,
-            embed_dim=48, depth=2, num_heads=3, pool="cls",
+            image_size=32,
+            patch_size=8,
+            in_channels=3,
+            num_classes=10,
+            embed_dim=48,
+            depth=2,
+            num_heads=3,
+            pool="cls",
         )
         x = torch.randn(4, 3, 32, 32)
         logits = model(x)
@@ -130,9 +122,16 @@ class TestVisionTransformer:
 
     def test_forward_shape_mean_pool(self):
         from cryptovit.models.vit import VisionTransformer
+
         model = VisionTransformer(
-            image_size=32, patch_size=8, in_channels=3, num_classes=10,
-            embed_dim=48, depth=2, num_heads=3, pool="mean",
+            image_size=32,
+            patch_size=8,
+            in_channels=3,
+            num_classes=10,
+            embed_dim=48,
+            depth=2,
+            num_heads=3,
+            pool="mean",
         )
         x = torch.randn(2, 3, 32, 32)
         logits = model(x)
@@ -140,9 +139,14 @@ class TestVisionTransformer:
 
     def test_get_features_shape(self):
         from cryptovit.models.vit import VisionTransformer
+
         model = VisionTransformer(
-            image_size=32, patch_size=8, num_classes=10,
-            embed_dim=48, depth=2, num_heads=3,
+            image_size=32,
+            patch_size=8,
+            num_classes=10,
+            embed_dim=48,
+            depth=2,
+            num_heads=3,
         )
         x = torch.randn(3, 3, 32, 32)
         feats = model.get_features(x)
@@ -150,17 +154,27 @@ class TestVisionTransformer:
 
     def test_num_parameters_positive(self):
         from cryptovit.models.vit import VisionTransformer
+
         model = VisionTransformer(
-            image_size=32, patch_size=8, num_classes=10,
-            embed_dim=48, depth=2, num_heads=3,
+            image_size=32,
+            patch_size=8,
+            num_classes=10,
+            embed_dim=48,
+            depth=2,
+            num_heads=3,
         )
         assert model.num_parameters() > 0
 
     def test_different_batch_sizes(self):
         from cryptovit.models.vit import VisionTransformer
+
         model = VisionTransformer(
-            image_size=32, patch_size=8, num_classes=10,
-            embed_dim=48, depth=2, num_heads=3,
+            image_size=32,
+            patch_size=8,
+            num_classes=10,
+            embed_dim=48,
+            depth=2,
+            num_heads=3,
         )
         model.eval()
         for B in [1, 4, 16]:
@@ -170,62 +184,82 @@ class TestVisionTransformer:
 
     def test_invalid_pool_raises(self):
         from cryptovit.models.vit import VisionTransformer
+
         with pytest.raises(AssertionError):
             VisionTransformer(
-                image_size=32, patch_size=8, num_classes=10,
-                embed_dim=48, depth=2, num_heads=3, pool="invalid",
+                image_size=32,
+                patch_size=8,
+                num_classes=10,
+                embed_dim=48,
+                depth=2,
+                num_heads=3,
+                pool="invalid",
             )
 
     def test_no_nan_in_output(self):
         from cryptovit.models.vit import VisionTransformer
+
         model = VisionTransformer(
-            image_size=32, patch_size=8, num_classes=10,
-            embed_dim=48, depth=2, num_heads=3,
+            image_size=32,
+            patch_size=8,
+            num_classes=10,
+            embed_dim=48,
+            depth=2,
+            num_heads=3,
         )
         x = torch.randn(2, 3, 32, 32)
         logits = model(x)
         assert not torch.isnan(logits).any(), "NaN in model output"
 
 
-# ---------------------------------------------------------------------------
-# build_model factory
-# ---------------------------------------------------------------------------
-
 class TestBuildModel:
     def test_vit_small(self):
         from cryptovit.models import build_model
-        cfg = OmegaConf.create({
-            "model": {
-                "name": "vit_small",
-                "image_size": 32, "patch_size": 8, "in_channels": 3,
-                "num_classes": 10, "embed_dim": 192, "depth": 6,
-                "num_heads": 3, "mlp_ratio": 4.0, "dropout": 0.0,
-                "attn_dropout": 0.0, "drop_path_rate": 0.0, "pool": "cls",
+
+        cfg = OmegaConf.create(
+            {
+                "model": {
+                    "name": "vit_small",
+                    "image_size": 32,
+                    "patch_size": 8,
+                    "in_channels": 3,
+                    "num_classes": 10,
+                    "embed_dim": 192,
+                    "depth": 6,
+                    "num_heads": 3,
+                    "mlp_ratio": 4.0,
+                    "dropout": 0.0,
+                    "attn_dropout": 0.0,
+                    "drop_path_rate": 0.0,
+                    "pool": "cls",
+                }
             }
-        })
+        )
         model = build_model(cfg)
         assert model is not None
 
     def test_unknown_model_raises(self):
         from cryptovit.models import build_model
-        cfg = OmegaConf.create({
-            "model": {
-                "name": "unknown_model",
-                "image_size": 32, "patch_size": 8, "in_channels": 3,
-                "num_classes": 10,
+
+        cfg = OmegaConf.create(
+            {
+                "model": {
+                    "name": "unknown_model",
+                    "image_size": 32,
+                    "patch_size": 8,
+                    "in_channels": 3,
+                    "num_classes": 10,
+                }
             }
-        })
+        )
         with pytest.raises(ValueError):
             build_model(cfg)
 
 
-# ---------------------------------------------------------------------------
-# DropPath
-# ---------------------------------------------------------------------------
-
 class TestDropPath:
     def test_identity_at_eval(self):
         from cryptovit.models.vit import DropPath
+
         dp = DropPath(drop_prob=0.9)
         dp.eval()
         x = torch.randn(4, 10)
@@ -234,6 +268,7 @@ class TestDropPath:
 
     def test_zero_prob_identity(self):
         from cryptovit.models.vit import DropPath
+
         dp = DropPath(drop_prob=0.0)
         dp.train()
         x = torch.randn(4, 10)

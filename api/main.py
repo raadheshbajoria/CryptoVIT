@@ -5,15 +5,15 @@ FastAPI inference backend for CryptoViT.
 
 Endpoints
 ---------
-GET  /health              — Health check, task and model status
-POST /encrypt             — Upload an image, receive its encrypted version
-POST /decrypt             — Decrypt an image (returns plaintext for demo only)
-POST /predict             — Classify an image encrypted with the given key
-POST /predict_plaintext   — Classify a plaintext image (variant A)
-POST /compare             — Predictions of all loaded variants for one image
-GET  /results             — Test results of the trained variants (result_*.json)
-GET  /metrics             — Security metrics for the last processed image
-GET  /model_info          — Model parameter counts
+GET  /health              - Health check, task and model status
+POST /encrypt             - Upload an image, receive its encrypted version
+POST /decrypt             - Decrypt an image (returns plaintext for demo only)
+POST /predict             - Classify an image encrypted with the given key
+POST /predict_plaintext   - Classify a plaintext image (variant A)
+POST /compare             - Predictions of all loaded variants for one image
+GET  /results             - Test results of the trained variants (result_*.json)
+GET  /metrics             - Security metrics for the last processed image
+GET  /model_info          - Model parameter counts
 
 Running (skin-lesion demo, DermaMNIST)
 --------------------------------------
@@ -38,16 +38,11 @@ import io
 import json
 import logging
 import os
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Optional
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-
 import numpy as np
-import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
 from PIL import Image
@@ -60,21 +55,19 @@ from cryptovit.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
 
-# Global state (loaded at startup)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 _cfg = None
 _device = None
 _service: Optional[ClassifierService] = None
 _ablation_dir: Optional[Path] = None
-_last_metrics: Dict = {}   # Security metrics from last /encrypt call
+_last_metrics: Dict = {}
 
-# The key the shipped models were trained with (a public research key — change
-# it, and retrain, before protecting anything real).
 ENCRYPTION_KEY = "CryptoViT_Research_Key_2025"
 
 
 def _config_overrides() -> list:
     overrides = []
-    # Several config files can be combined with commas, e.g. "dermamnist,block2"
     for name in os.environ.get("CRYPTOVIT_CONFIG", "").split(","):
         if name.strip():
             overrides.append(f"config={name.strip()}")
@@ -96,7 +89,10 @@ async def lifespan(app: FastAPI):
 
     _ablation_dir = PROJECT_ROOT / _cfg.paths.experiments_dir / "ablation"
     _service = ClassifierService(
-        _cfg, _device, _ablation_dir, ENCRYPTION_KEY,
+        _cfg,
+        _device,
+        _ablation_dir,
+        ENCRYPTION_KEY,
         preferred_variant=os.environ.get("CRYPTOVIT_VARIANT", "D").upper(),
     )
     _service.load()
@@ -113,10 +109,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _pil_to_numpy(img: Image.Image, target_size: int = 32) -> np.ndarray:
     """Resize PIL image and return HWC uint8 numpy array."""
@@ -143,10 +135,6 @@ def _require_service() -> ClassifierService:
     return _service
 
 
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
-
 @app.get("/health")
 async def health():
     svc = _require_service()
@@ -158,7 +146,6 @@ async def health():
         "class_names": svc.class_names,
         "image_size": svc.native_size,
         "encryption_scheme": svc.scheme,
-        # Kept for older clients: A is the plaintext baseline, D the CryptoViT
         "baseline_loaded": status["A"]["loaded"],
         "cryptovit_loaded": status["D"]["loaded"],
         "variants": status,
@@ -183,9 +170,10 @@ async def encrypt_image(
         img_np = _load_upload(await file.read())
         enc_np, meta = encrypt(img_np, key, svc.transient_steps, scheme=svc.scheme)
 
-        # Compute and cache security metrics
         _last_metrics = compute_all_security_metrics(
-            img_np, enc_np, key=key,
+            img_np,
+            enc_np,
+            key=key,
             encrypt_fn=lambda img, k: encrypt(img, k, svc.transient_steps, scheme=svc.scheme),
         )
         _last_metrics["key_hash"] = meta["key_hash"]
@@ -196,7 +184,7 @@ async def encrypt_image(
             headers={"X-Encryption-KeyHash": meta["key_hash"]},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/decrypt")
@@ -217,7 +205,7 @@ async def decrypt_image(
         restored_np = decrypt(enc_np, key, None, svc.transient_steps, scheme=svc.scheme)
         return Response(content=_image_to_bytes(restored_np), media_type="image/png")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/predict")
@@ -236,14 +224,18 @@ async def predict_encrypted(
     svc = _require_service()
     try:
         img_np = _load_upload(await file.read())
-        return JSONResponse(content=svc.predict_encrypted(
-            img_np, key, variant=variant.upper() if variant else None,
-            encrypt_first=encrypt_first,
-        ))
+        return JSONResponse(
+            content=svc.predict_encrypted(
+                img_np,
+                key,
+                variant=variant.upper() if variant else None,
+                encrypt_first=encrypt_first,
+            )
+        )
     except KeyError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/predict_plaintext")
@@ -253,9 +245,9 @@ async def predict_plaintext(file: UploadFile = File(...)):
     try:
         return JSONResponse(content=svc.predict_plaintext(_load_upload(await file.read())))
     except KeyError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/compare")
@@ -272,7 +264,7 @@ async def compare_variants(
     try:
         return JSONResponse(content=svc.compare(_load_upload(await file.read()), key))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/results")
@@ -289,11 +281,7 @@ async def get_results():
 async def get_metrics():
     """Return security metrics from the last /encrypt call."""
     if not _last_metrics:
-        raise HTTPException(
-            status_code=404,
-            detail="No metrics available. Call /encrypt first."
-        )
-    # Convert nested numpy floats to plain Python floats
+        raise HTTPException(status_code=404, detail="No metrics available. Call /encrypt first.")
     return JSONResponse(content=json.loads(json.dumps(_last_metrics, default=float)))
 
 
@@ -308,7 +296,6 @@ async def model_info():
             "parameters": sum(p.numel() for p in model.parameters()),
             "trained": svc.trained.get(name, False),
         }
-    # Names used by earlier clients
     if "A" in info:
         info["baseline_vit"] = {"parameters": info["A"]["parameters"]}
     if "D" in info:
